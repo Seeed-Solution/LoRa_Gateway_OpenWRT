@@ -1,0 +1,48 @@
+#!/bin/sh
+
+PIN=$1
+
+if [ $1 == "--help" -o $1 == "-h" ]; then
+    echo "gpio x dir output/input -- set gpio x direction" > /dev/console
+    echo "gpio x set high/low     -- set gpio x value" > /dev/console
+    echo "gpio x get              -- get gpio x value" > /dev/console
+    exit 0
+fi
+
+if [ $PIN -ge 0 -a $PIN -le 31 ]; then
+    let PIN=PIN+480
+    #echo "$1 -> $PIN" > /dev/console
+elif [ $PIN -ge 32 -a $PIN -le 63 ]; then
+    let PIN=PIN+448-32
+    #echo "$1 -> $PIN" > /dev/console
+elif [ $PIN -ge 64 -a $PIN -le 95 ]; then
+    let PIN=PIN+416-64
+    #echo "$1 -> $PIN" > /dev/console
+else
+    #echo "gpio config error" > /dev/console
+    exit 78
+fi
+
+if [ ! -d /sys/class/gpio/gpio${PIN} ]; then
+    echo "${PIN}" > /sys/class/gpio/export
+fi
+
+if [ "$2" == "dir" ]; then
+    if [ "$3" == "output" ]; then
+        echo "out" > /sys/class/gpio/gpio${PIN}/direction
+    elif [ "$3" == "input" ]; then
+        echo "in" > /sys/class/gpio/gpio${PIN}/direction
+    fi
+fi
+
+if [ "$2" == "set" ]; then
+    if [ "$3" == "high" ]; then
+        echo "1" > /sys/class/gpio/gpio${PIN}/value
+    elif [ "$3" == "low" ]; then
+        echo "0" > /sys/class/gpio/gpio${PIN}/value
+    fi
+elif [ "$2" == "get" ]; then
+    echo $(cat /sys/class/gpio/gpio${PIN}/value)
+fi
+
+exit 0

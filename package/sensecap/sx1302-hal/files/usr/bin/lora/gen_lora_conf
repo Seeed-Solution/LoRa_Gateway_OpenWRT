@@ -1,0 +1,668 @@
+#!/usr/bin/lua
+
+local uloop = require("uloop")
+local ubus  = require("ubus")
+local json  = require "dkjson"
+local uci   = require "uci"
+
+local tx_gain_lut_915_low = {
+    { rf_power = 1, pa_gain = 0, pwr_idx = 5 },
+    { rf_power = 2, pa_gain = 0, pwr_idx = 6 },
+    { rf_power = 3, pa_gain = 0, pwr_idx = 7 },
+    { rf_power = 4, pa_gain = 0, pwr_idx = 8 },
+    { rf_power = 5, pa_gain = 0, pwr_idx = 9 },
+    { rf_power = 6, pa_gain = 0, pwr_idx = 10 },
+    { rf_power = 7, pa_gain = 0, pwr_idx = 11 },
+    { rf_power = 8, pa_gain = 0, pwr_idx = 12 },
+    { rf_power = 9, pa_gain = 0, pwr_idx = 13 },
+    { rf_power = 10, pa_gain = 0, pwr_idx = 14 },
+    { rf_power = 11, pa_gain = 0, pwr_idx = 15 },
+    { rf_power = 12, pa_gain = 0, pwr_idx = 16 },
+    { rf_power = 13, pa_gain = 0, pwr_idx = 17 },
+    { rf_power = 14, pa_gain = 0, pwr_idx = 18 },
+    { rf_power = 15, pa_gain = 0, pwr_idx = 19 },
+    { rf_power = 16, pa_gain = 1, pwr_idx = 3 },
+    { rf_power = 17, pa_gain = 1, pwr_idx = 4 },
+    { rf_power = 18, pa_gain = 1, pwr_idx = 5 },
+    { rf_power = 19, pa_gain = 1, pwr_idx = 6 },
+    { rf_power = 20, pa_gain = 1, pwr_idx = 7 },
+    { rf_power = 21, pa_gain = 1, pwr_idx = 8 },
+    { rf_power = 22, pa_gain = 1, pwr_idx = 9 },
+    { rf_power = 23, pa_gain = 1, pwr_idx = 11 },
+    { rf_power = 24, pa_gain = 1, pwr_idx = 12 },
+    { rf_power = 25, pa_gain = 1, pwr_idx = 13 },
+    { rf_power = 26, pa_gain = 1, pwr_idx = 14 },
+    { rf_power = 27, pa_gain = 1, pwr_idx = 15 }
+}
+local tx_gain_lut_915_high = {
+    { rf_power = 1, pa_gain = 0, pwr_idx = 5 },
+    { rf_power = 2, pa_gain = 0, pwr_idx = 6 },
+    { rf_power = 3, pa_gain = 0, pwr_idx = 7 },
+    { rf_power = 4, pa_gain = 0, pwr_idx = 8 },
+    { rf_power = 5, pa_gain = 0, pwr_idx = 9 },
+    { rf_power = 6, pa_gain = 0, pwr_idx = 10 },
+    { rf_power = 7, pa_gain = 0, pwr_idx = 11 },
+    { rf_power = 8, pa_gain = 0, pwr_idx = 12 },
+    { rf_power = 9, pa_gain = 0, pwr_idx = 13 },
+    { rf_power = 10, pa_gain = 0, pwr_idx = 14 },
+    { rf_power = 11, pa_gain = 0, pwr_idx = 15 },
+    { rf_power = 12, pa_gain = 0, pwr_idx = 16 },
+    { rf_power = 13, pa_gain = 0, pwr_idx = 17 },
+    { rf_power = 14, pa_gain = 0, pwr_idx = 18 },
+    { rf_power = 15, pa_gain = 0, pwr_idx = 19 },
+    { rf_power = 16, pa_gain = 1, pwr_idx = 3 },
+    { rf_power = 17, pa_gain = 1, pwr_idx = 4 },
+    { rf_power = 18, pa_gain = 1, pwr_idx = 5 },
+    { rf_power = 19, pa_gain = 1, pwr_idx = 6 },
+    { rf_power = 20, pa_gain = 1, pwr_idx = 7 },
+    { rf_power = 21, pa_gain = 1, pwr_idx = 8 },
+    { rf_power = 22, pa_gain = 1, pwr_idx = 9 },
+    { rf_power = 23, pa_gain = 1, pwr_idx = 11 },
+    { rf_power = 24, pa_gain = 1, pwr_idx = 12 },
+    { rf_power = 25, pa_gain = 1, pwr_idx = 13 },
+    { rf_power = 26, pa_gain = 1, pwr_idx = 14 },
+    { rf_power = 27, pa_gain = 1, pwr_idx = 15 }
+}
+
+local tx_gain_lut_868_low = {
+    { rf_power = 1, pa_gain = 0, pwr_idx = 4 },
+    { rf_power = 2, pa_gain = 0, pwr_idx = 5 },
+    { rf_power = 3, pa_gain = 0, pwr_idx = 6 },
+    { rf_power = 4, pa_gain = 0, pwr_idx = 7 },
+    { rf_power = 5, pa_gain = 0, pwr_idx = 8 },
+    { rf_power = 6, pa_gain = 0, pwr_idx = 9 },
+    { rf_power = 7, pa_gain = 0, pwr_idx = 10 },
+    { rf_power = 8, pa_gain = 0, pwr_idx = 11 },
+    { rf_power = 9, pa_gain = 0, pwr_idx = 12 },
+    { rf_power = 10, pa_gain = 0, pwr_idx = 13 },
+    { rf_power = 11, pa_gain = 0, pwr_idx = 14 },
+    { rf_power = 12, pa_gain = 0, pwr_idx = 15 },
+    { rf_power = 13, pa_gain = 0, pwr_idx = 16 },
+    { rf_power = 14, pa_gain = 0, pwr_idx = 17 },
+    { rf_power = 15, pa_gain = 0, pwr_idx = 18 },
+    { rf_power = 16, pa_gain = 0, pwr_idx = 19 },
+    { rf_power = 17, pa_gain = 1, pwr_idx = 1 },
+    { rf_power = 18, pa_gain = 1, pwr_idx = 2 },
+    { rf_power = 19, pa_gain = 1, pwr_idx = 3 },
+    { rf_power = 20, pa_gain = 1, pwr_idx = 4 },
+    { rf_power = 21, pa_gain = 1, pwr_idx = 5 },
+    { rf_power = 22, pa_gain = 1, pwr_idx = 6 },
+    { rf_power = 23, pa_gain = 1, pwr_idx = 7 },
+    { rf_power = 24, pa_gain = 1, pwr_idx = 8 },
+    { rf_power = 25, pa_gain = 1, pwr_idx = 10 },
+    { rf_power = 26, pa_gain = 1, pwr_idx = 13 },
+    { rf_power = 27, pa_gain = 1, pwr_idx = 16 }
+}
+local tx_gain_lut_868_high = {
+    { rf_power = 1, pa_gain = 0, pwr_idx = 4 },
+    { rf_power = 2, pa_gain = 0, pwr_idx = 5 },
+    { rf_power = 3, pa_gain = 0, pwr_idx = 6 },
+    { rf_power = 4, pa_gain = 0, pwr_idx = 7 },
+    { rf_power = 5, pa_gain = 0, pwr_idx = 8 },
+    { rf_power = 6, pa_gain = 0, pwr_idx = 9 },
+    { rf_power = 7, pa_gain = 0, pwr_idx = 10 },
+    { rf_power = 8, pa_gain = 0, pwr_idx = 11 },
+    { rf_power = 9, pa_gain = 0, pwr_idx = 12 },
+    { rf_power = 10, pa_gain = 0, pwr_idx = 13 },
+    { rf_power = 11, pa_gain = 0, pwr_idx = 14 },
+    { rf_power = 12, pa_gain = 0, pwr_idx = 15 },
+    { rf_power = 13, pa_gain = 0, pwr_idx = 16 },
+    { rf_power = 14, pa_gain = 0, pwr_idx = 17 },
+    { rf_power = 15, pa_gain = 0, pwr_idx = 18 },
+    { rf_power = 16, pa_gain = 0, pwr_idx = 19 },
+    { rf_power = 17, pa_gain = 1, pwr_idx = 1 },
+    { rf_power = 18, pa_gain = 1, pwr_idx = 2 },
+    { rf_power = 19, pa_gain = 1, pwr_idx = 3 },
+    { rf_power = 20, pa_gain = 1, pwr_idx = 4 },
+    { rf_power = 21, pa_gain = 1, pwr_idx = 5 },
+    { rf_power = 22, pa_gain = 1, pwr_idx = 6 },
+    { rf_power = 23, pa_gain = 1, pwr_idx = 7 },
+    { rf_power = 24, pa_gain = 1, pwr_idx = 8 },
+    { rf_power = 25, pa_gain = 1, pwr_idx = 10 },
+    { rf_power = 26, pa_gain = 1, pwr_idx = 13 },
+    { rf_power = 27, pa_gain = 1, pwr_idx = 16 }
+}
+
+
+local tx_gain_lut_470_low = {
+    { rf_power = -6, pa_gain = 1, pwr_idx = 0 },
+    { rf_power = -3, pa_gain = 1, pwr_idx = 1 },
+    { rf_power =  0, pa_gain = 1, pwr_idx = 2 },
+    { rf_power =  3, pa_gain = 0, pwr_idx = 3 },
+    { rf_power =  6, pa_gain = 0, pwr_idx = 4 },
+    { rf_power = 10, pa_gain = 0, pwr_idx = 5 },
+    { rf_power = 11, pa_gain = 0, pwr_idx = 6 },
+    { rf_power = 12, pa_gain = 0, pwr_idx = 7 },
+    { rf_power = 13, pa_gain = 0, pwr_idx = 8 },
+    { rf_power = 14, pa_gain = 0, pwr_idx = 9 },
+    { rf_power = 16, pa_gain = 0, pwr_idx = 10 },
+    { rf_power = 20, pa_gain = 0, pwr_idx = 11 },
+    { rf_power = 23, pa_gain = 0, pwr_idx = 12 },
+    { rf_power = 25, pa_gain = 0, pwr_idx = 13 },
+    { rf_power = 26, pa_gain = 0, pwr_idx = 14 },
+    { rf_power = 27, pa_gain = 0, pwr_idx = 15 }
+}
+
+local tx_gain_lut_470_high = {
+    { rf_power = -6, pa_gain = 1, pwr_idx = 0 },
+    { rf_power = -3, pa_gain = 1, pwr_idx = 1 },
+    { rf_power =  0, pa_gain = 1, pwr_idx = 2 },
+    { rf_power =  3, pa_gain = 0, pwr_idx = 3 },
+    { rf_power =  6, pa_gain = 0, pwr_idx = 4 },
+    { rf_power = 10, pa_gain = 0, pwr_idx = 5 },
+    { rf_power = 11, pa_gain = 0, pwr_idx = 6 },
+    { rf_power = 12, pa_gain = 0, pwr_idx = 7 },
+    { rf_power = 13, pa_gain = 0, pwr_idx = 8 },
+    { rf_power = 14, pa_gain = 0, pwr_idx = 9 },
+    { rf_power = 16, pa_gain = 0, pwr_idx = 10 },
+    { rf_power = 20, pa_gain = 0, pwr_idx = 11 },
+    { rf_power = 23, pa_gain = 0, pwr_idx = 12 },
+    { rf_power = 25, pa_gain = 0, pwr_idx = 13 },
+    { rf_power = 26, pa_gain = 0, pwr_idx = 14 },
+    { rf_power = 27, pa_gain = 0, pwr_idx = 15 }
+}
+
+
+local SX130x_conf = {
+    com_type = "SPI",
+    com_path = "/dev/spidev0.1",
+    lorawan_public = true,
+    clksrc = 0,
+    antenna_gain = 3,
+    full_duplex = false,
+    fine_timestamp = {
+        enable = false,
+        mode = "all_sf",
+    },
+    sx1261_conf = {
+        spi_path = "/dev/spidev0.2",
+        rssi_offset = 0, --replace
+        spectral_scan = {
+            enable = false,
+            freq_start = 903900000, --replace
+            nb_chan = 8,
+            nb_scan = 2000,
+            pace_s = 10,
+        },
+        lbt = {
+            enable = false,
+        }
+    },
+    radio_0 = {
+        enable = true,
+        type = "SX1250",
+        freq = 0, --replace
+        rssi_offset = 0, --replace
+        rssi_tcomp = {
+            coeff_a = 0,
+            coeff_b = 0,
+            coeff_c = 20.41,
+            coeff_d = 2162.56,
+            coeff_e = 0
+        },
+        tx_enable = true,
+        tx_freq_min = 0, --replace
+        tx_freq_max = 0, --replace
+        tx_gain_lut = {}, --replace
+    },
+    radio_1 = {
+        enable = true;
+        type = "SX1250",
+        freq = 0, --replace
+        rssi_offset = -213.0, --replace
+        rssi_tcomp = {
+            coeff_a = 0,
+            coeff_b = 0,
+            coeff_c = 20.41,
+            coeff_d = 2162.56,
+            coeff_e = 0
+        },
+        tx_enable = false
+    },
+    chan_multiSF_All = { spreading_factor_enable = { 5, 6, 7, 8, 9, 10, 11, 12 } },
+    chan_multiSF_0 = {}, --replace
+    chan_multiSF_1 = {}, --replace
+    chan_multiSF_2 = {}, --replace
+    chan_multiSF_3 = {}, --replace
+    chan_multiSF_4 = {}, --replace
+    chan_multiSF_5 = {}, --replace
+    chan_multiSF_6 = {}, --replace
+    chan_multiSF_7 = {}, --replace
+    chan_Lora_std = {}, --replace
+    chan_FSK = {} --replace
+}
+
+local gateway_conf = {
+    gateway_ID = "AA555A0000000000", --replace
+    server_address = "localhost", --replace
+    serv_port_up = 1700, --replace
+    serv_port_down = 1700, --replace
+    autoquit_threshold = 6,  -- timeout: autoquit_threshold * keepalive_interval
+    keepalive_interval = 5,  -- s
+    stat_interval = 30,
+    push_timeout_ms = 950,
+    forward_crc_valid = true,
+    forward_crc_error = false,
+    forward_crc_disabled = false,
+    ref_latitude = 0.0,
+    ref_longitude = 0.0,
+    ref_altitude = 0,
+    beacon_period = 0,
+    beacon_freq_hz = 869525000,
+    beacon_datarate = 9,
+    beacon_bw_hz = 125000,
+    beacon_power = 14,
+    beacon_infodesc = 0
+}
+
+
+local lora_global = {}
+
+
+local function cmd_execute(cmd)
+    if (cmd) then
+        local pfd = io.popen(cmd)
+        local ret = pfd:read()
+        pfd:close()
+        return ret
+    end
+    return nil
+end
+
+local function element_set(s, o, e, must, func)
+    if s[e] ~= nil then
+        o[e] = func(s[e])
+        return 0
+    else
+        if must then
+            error("Failed to get " .. e)
+            return 1
+        end
+    end
+    return 0
+end
+
+local function toboolean(n)
+    if n == "1" then
+        return true
+    elseif n == "true" then
+        return true
+    else
+        return false
+    end
+end
+
+-- Print contents of `tbl`, with indentation.
+-- `indent` sets the initial level of indentation.
+function tprint (tbl, indent)
+    if not indent then indent = 0 end
+    for k, v in pairs(tbl) do
+      formatting = string.rep("  ", indent) .. k .. ": "
+      if type(v) == "table" then
+        print(formatting)
+        tprint(v, indent+1)
+      elseif type(v) == 'boolean' then
+        print(formatting .. tostring(v))      
+      else
+        print(formatting .. v)
+      end
+    end
+  end
+
+local function sx1302_uci_set(uci)
+    local ret = 0
+    SX130x_conf.lorawan_public = toboolean(uci.lorawan_public)
+    SX130x_conf.radio_0.freq = tonumber(uci.radio_0_freq) 
+    SX130x_conf.radio_1.freq = tonumber(uci.radio_1_freq)
+    SX130x_conf.radio_0.tx_freq_min = tonumber(uci.radio_0_tx_freq_min)
+    SX130x_conf.radio_0.tx_freq_max = tonumber(uci.radio_0_tx_freq_max)
+
+    for i=0, 7 do
+        SX130x_conf[ "chan_multiSF_"..i].enable = toboolean(uci["chan_multiSF_"..i.."_enable"])
+        SX130x_conf[ "chan_multiSF_"..i].radio =  tonumber(uci["chan_multiSF_"..i.."_radio"])
+        SX130x_conf[ "chan_multiSF_"..i]["if"] =  tonumber(uci["chan_multiSF_"..i.."_if"])
+    end
+    SX130x_conf.chan_Lora_std.enable = toboolean(uci.chan_Lora_std_enable)
+    SX130x_conf.chan_Lora_std.radio = tonumber(uci.chan_Lora_std_radio)
+    SX130x_conf.chan_Lora_std["if"] = tonumber(uci.chan_Lora_std_if)
+    SX130x_conf.chan_Lora_std.bandwidth = tonumber(uci.chan_Lora_std_bandwidth)
+    SX130x_conf.chan_Lora_std.spread_factor  = tonumber(uci.chan_Lora_std_spread_factor)
+
+    SX130x_conf.chan_FSK.enable = toboolean(uci.chan_FSK_enable)
+    SX130x_conf.chan_FSK.radio = tonumber(uci.chan_FSK_radio)
+    SX130x_conf.chan_FSK["if"] = tonumber(uci.chan_FSK_if)
+    SX130x_conf.chan_Lora_std.bandwidth = tonumber(uci.chan_FSK_bandwidth)
+    SX130x_conf.chan_Lora_std.datarate  = tonumber(uci.chan_FSK_datarate)
+end
+
+
+local function sx1302_json_get(file)
+    local str
+    local fd = io.open("/etc/lora/"..file..".json", "r")
+    if fd == nil then
+        error("open file fail "..file)
+        return nil
+    else
+        str = fd:read("*a")
+        fd:close()
+    end
+    local conf_json = json.decode(str)
+    if conf_json ~= nil then
+        return conf_json.SX130x_conf
+    end
+    error("Decode file fail:"..file)
+end
+
+local function is_in_table(key1, t)
+    for key, value in pairs(t) do
+        if key == key1 then
+            return true
+        end
+    end
+    return false
+end
+
+local US_902_928_FSB_X = {
+    US_902_928_FSB_1 = 1,
+    US_902_928_FSB_2 = 2,
+    US_902_928_FSB_3 = 3,
+    US_902_928_FSB_4 = 4,
+    US_902_928_FSB_5 = 5,
+    US_902_928_FSB_6 = 6,
+    US_902_928_FSB_7 = 7,
+    US_902_928_FSB_8 = 8,
+}
+local AU_915_928_FSB_X = {
+    AU_915_928_FSB_1 = 1,
+    AU_915_928_FSB_2 = 2,
+    AU_915_928_FSB_3 = 3,
+    AU_915_928_FSB_4 = 4,
+    AU_915_928_FSB_5 = 5,
+    AU_915_928_FSB_6 = 6,
+    AU_915_928_FSB_7 = 7,
+    AU_915_928_FSB_8 = 8,
+}
+
+
+local CN_470_510_FSB_X = {
+    CN_470_510_FSB_1 = 1,
+    CN_470_510_FSB_2 = 2,
+    CN_470_510_FSB_3 = 3,
+    CN_470_510_FSB_4 = 4,
+    CN_470_510_FSB_5 = 5,
+    CN_470_510_FSB_6 = 6,
+    CN_470_510_FSB_7 = 7,
+    CN_470_510_FSB_8 = 8,
+    CN_470_510_FSB_9 = 9,
+    CN_470_510_FSB_10 = 10,
+    CN_470_510_FSB_11 = 11,
+    CN_470_510_FSB_12 = 12,
+}
+
+
+local region_switch = {
+    ["US915"] = function (lora_radio_table)
+        local freq_plan = lora_radio_table.freq_plan.cloud_freq_plan
+        local FSB = nil
+        local conf = {}
+        if( is_in_table(freq_plan, US_902_928_FSB_X) == true ) then 
+            FSB = US_902_928_FSB_X[freq_plan]
+            conf = sx1302_json_get("US_902_928_FSB_X")
+            if  FSB ~= nil then
+                local fsb_index = tonumber(FSB)
+                if fsb_index > 8 then
+                    fsb_index = 8
+                end
+                local radio_0_freq =  902300000 + (fsb_index -1) * 8 * 200000  + 400000
+                local radio_1_freq =  902300000 + (fsb_index -1) * 8 * 200000  + 1100000
+                conf.radio_0.freq = radio_0_freq
+                conf.radio_1.freq = radio_1_freq
+            end
+        else
+            conf = sx1302_json_get(freq_plan)
+        end
+
+        return conf
+    end,
+
+    ["AU915"] = function (lora_radio_table)
+
+        local freq_plan = lora_radio_table.freq_plan.cloud_freq_plan
+        local FSB = nil
+        local conf = {}
+        if(  is_in_table(freq_plan, AU_915_928_FSB_X) == true ) then 
+            FSB = AU_915_928_FSB_X[freq_plan]
+            conf = sx1302_json_get("AU_915_928_FSB_X")
+            if  FSB ~= nil then
+                local fsb_index = tonumber(FSB)
+                if fsb_index > 8 then
+                    fsb_index = 8
+                end
+                local radio_0_freq =  915200000 + (fsb_index -1) * 8 * 200000  + 400000
+                local radio_1_freq =  915200000 + (fsb_index -1) * 8 * 200000  + 1100000
+                conf.radio_0.freq = radio_0_freq
+                conf.radio_1.freq = radio_1_freq
+            end
+        else
+            conf = sx1302_json_get(freq_plan)
+        end
+
+        return conf
+    end,
+
+    ["AS923"] = function (lora_radio_table)
+        local freq_plan = lora_radio_table.freq_plan.cloud_freq_plan
+        local conf = sx1302_json_get(freq_plan)
+        return conf
+    end,
+
+    ["KR920"] = function (lora_radio_table)
+        local freq_plan = lora_radio_table.freq_plan.cloud_freq_plan
+        local conf = sx1302_json_get(freq_plan)
+        return conf
+    end,
+
+    ["EU868"] = function (lora_radio_table)
+        local freq_plan = lora_radio_table.freq_plan.cloud_freq_plan
+        local conf = sx1302_json_get(freq_plan)
+        return conf
+    end,
+
+    ["IN865"] = function (lora_radio_table)
+        local freq_plan = lora_radio_table.freq_plan.cloud_freq_plan
+        local conf = sx1302_json_get(freq_plan)
+        return conf
+    end,
+
+    ["RU864"] = function (lora_radio_table)
+        local freq_plan = lora_radio_table.freq_plan.cloud_freq_plan
+        local conf = sx1302_json_get(freq_plan)
+        return conf
+    end,
+    
+    ["CN470"] = function (lora_radio_table)
+
+        local freq_plan = lora_radio_table.freq_plan.cloud_freq_plan
+        local FSB = nil
+        local conf = {}
+        if(  is_in_table(freq_plan, CN_470_510_FSB_X) == true ) then 
+            FSB = CN_470_510_FSB_X[freq_plan]
+            conf = sx1302_json_get("CN_470_510_FSB_X")
+            if  FSB ~= nil then
+                local fsb_index = tonumber(FSB)
+                if fsb_index > 12 then
+                    fsb_index = 12
+                end
+                local radio_0_freq =  470300000 + (fsb_index -1) * 8 * 200000  + 300000
+                local radio_1_freq =  470300000 + (fsb_index -1) * 8 * 200000  + 1100000
+                conf.radio_0.freq = radio_0_freq
+                conf.radio_1.freq = radio_1_freq
+            end
+        else
+            conf = sx1302_json_get(freq_plan)
+        end
+        return conf
+    end,
+
+    ["Customized915"] = function (lora_radio_table)
+        SX130x_conf.radio_0.rssi_offset = -213.0
+        SX130x_conf.radio_1.rssi_offset = -213.0
+        if lora_radio_table.sx1302.tx_gain_lut == "0" then
+            SX130x_conf.radio_0.tx_gain_lut = tx_gain_lut_915_low
+        else
+            SX130x_conf.radio_0.tx_gain_lut = tx_gain_lut_915_high
+        end
+
+        sx1302_uci_set(lora_radio_table.sx1302)
+        return SX130x_conf
+    end,
+
+    ["Customized868"] = function (lora_radio_table)
+
+        SX130x_conf.radio_0.rssi_offset = -215.0
+        SX130x_conf.radio_1.rssi_offset = -215.0
+        if lora_radio_table.sx1302.tx_gain_lut == "0" then
+            SX130x_conf.radio_0.tx_gain_lut = tx_gain_lut_868_low
+        else
+            SX130x_conf.radio_0.tx_gain_lut = tx_gain_lut_868_high
+        end
+
+        sx1302_uci_set(lora_radio_table.sx1302)
+        return SX130x_conf
+    end,
+
+    -- todo
+    ["Customized470"] = function (lora_radio_table)
+        SX130x_conf.radio_0.rssi_offset = -207.0
+        SX130x_conf.radio_1.rssi_offset = -207.0
+        if lora_radio_table.sx1302.tx_gain_lut == "0" then
+            SX130x_conf.radio_0.tx_gain_lut = tx_gain_lut_470_low
+        else
+            SX130x_conf.radio_0.tx_gain_lut = tx_gain_lut_470_high
+        end
+
+        sx1302_uci_set(lora_radio_table.sx1302)
+        return SX130x_conf
+    end,
+}
+
+
+local function SX130x_conf_set(conn)
+    local lora_radio_ubus = conn:call("uci", "get", { config = "lora_radio" })
+    local lora_radio_table = lora_radio_ubus["values"]
+    if not lora_radio_table then
+        error("Failed to get lora_radio file")
+        return -1
+    end
+    local lora_network_ubus = conn:call("uci", "get", { config = "lora_network" })
+    local lora_network_table = lora_network_ubus["values"]
+    if not lora_network_table then
+        error("Failed to get lora_network file")
+        return -1
+    end
+    local mode = lora_network_table.network.mode
+
+    local region    = lora_radio_table.freq_plan.region
+    local sx1302_table
+
+    sx1302_table = region_switch[region](lora_radio_table)
+    lora_global.SX130x_conf = sx1302_table
+
+    if  mode == "basic_station" then
+        lora_global.SX1302_conf = sx1302_table
+    else
+        lora_global.SX130x_conf = sx1302_table
+    end
+
+    return 0
+end
+
+local function packet_forwarder_set(uci)
+    if uci == nil then
+        return nil
+    end
+    local ret = 0
+    ret = ret + element_set(uci, gateway_conf, "gateway_ID", true, tostring)
+    ret = ret + element_set(uci, gateway_conf, "server_address", true, tostring)
+    ret = ret + element_set(uci, gateway_conf, "serv_port_up", true, tonumber)
+    ret = ret + element_set(uci, gateway_conf, "serv_port_down", true, tonumber)
+
+    ret = ret + element_set(uci, gateway_conf, "keepalive_interval", false, tonumber)
+    ret = ret + element_set(uci, gateway_conf, "push_timeout_ms", false, tonumber)
+    ret = ret + element_set(uci, gateway_conf, "stat_interval", false, tonumber)
+
+    ret = ret + element_set(uci, gateway_conf, "beacon_period", false, tonumber)
+    ret = ret + element_set(uci, gateway_conf, "beacon_freq_hz", false, tonumber)
+    ret = ret + element_set(uci, gateway_conf, "beacon_freq_nb", false, tonumber)
+    ret = ret + element_set(uci, gateway_conf, "beacon_freq_step", false, tonumber)
+    ret = ret + element_set(uci, gateway_conf, "beacon_datarate", false, tonumber)
+    ret = ret + element_set(uci, gateway_conf, "beacon_bw_hz", false, tonumber)
+    ret = ret + element_set(uci, gateway_conf, "beacon_power", false, tonumber)
+    ret = ret + element_set(uci, gateway_conf, "beacon_infodesc", false, tonumber)
+
+    ret = ret + element_set(uci, gateway_conf, "fake_gps", false, toboolean)
+    ret = ret + element_set(uci, gateway_conf, "latitude", false, tonumber)
+    ret = ret + element_set(uci, gateway_conf, "longitude", false, tonumber)
+    ret = ret + element_set(uci, gateway_conf, "altitude", false, tonumber)
+
+    ret = ret + element_set(uci, gateway_conf, "forward_crc_valid", false, toboolean)
+    ret = ret + element_set(uci, gateway_conf, "forward_crc_error", false, toboolean)
+    ret = ret + element_set(uci, gateway_conf, "forward_crc_disabled", false, toboolean)
+
+    if ret > 0 then
+        return nil
+    end
+
+    return gateway_conf
+end
+
+local function gateway_conf_set(conn)
+    local lora_network_ubus = conn:call("uci", "get", { config = "lora_network" })
+    local lora_network_table = lora_network_ubus["values"]
+    if not lora_network_table then
+        error("Failed to get lora_network file")
+        return -1
+    end
+    local mode = lora_network_table.network.mode
+
+    local gps = cmd_execute("cat /etc/deviceinfo/gps")
+    if  gps ~= nil and gps == "yes" then
+        gateway_conf.gps_tty_path = "/dev/ttyS2"
+    end
+
+    if mode == "packet_forwarder" then
+        local pkt_fwd_table = packet_forwarder_set(lora_network_table.lora_pkt_fwd)
+        if pkt_fwd_table ~= nil then
+            lora_global.gateway_conf = pkt_fwd_table
+            return 0
+        end
+        return -1
+    end
+    return -1
+end
+
+local function main()
+    uci.cursor()
+    uloop.init()
+
+    local conn = ubus.connect()
+    if not conn then
+        error("Failed to connect to ubus")
+    end
+
+    local ret
+
+    ret = SX130x_conf_set(conn)
+    if ret < 0 then
+        return nil
+    end
+    
+    ret = gateway_conf_set(conn)
+    if ret < 0 then
+        return nil
+    end
+
+    return json.encode(lora_global, { indent = true })
+end
+
+print(main())

@@ -1,0 +1,128 @@
+#!/bin/sh /etc/rc.common
+START=98
+STOP=10
+
+USE_PROCD=1
+
+PROG=/usr/bin/station
+STATION_HOME="/var/etc/station"
+CONFIGFILE="/var/etc/station/station.conf"
+
+CFG_TRUST="/etc/station/server.trust"
+CFG_CRT="/etc/station/client.crt"
+CFG_KEY="/etc/station/client.key"
+
+cups_boot_server(){
+	config_get uri $1 uri
+	[ -n "$uri" ] || return
+	config_get auth_mode $1 auth_mode
+	
+	echo "${uri}" > ${STATION_HOME}/cups-boot.uri
+
+	if [ ${auth_mode} != "none" ];then
+		[ -e "$CFG_TRUST" ] && cp -f $CFG_TRUST ${STATION_HOME}/cups-boot.trust
+	fi
+	
+	if [ ${auth_mode} = "tls-server-client" ]; then
+		[ -e "$CFG_CRT" ] && cp -f $CFG_CRT ${STATION_HOME}/cups-boot.crt
+		[ -e "$CFG_KEY" ] && cp -f $CFG_KEY ${STATION_HOME}/cups-boot.key
+	fi
+	
+	if [ ${auth_mode} = "tls-server-token" ]; then
+		config_get token $1 token
+		echo -e "$token\r" > ${STATION_HOME}/cups-boot.key
+	fi
+}
+
+cups_server(){
+
+	config_get uri $1 uri
+	[ -n "$uri" ] || return
+	config_get auth_mode $1 auth_mode
+	
+	echo "${uri}" > ${STATION_HOME}/cups.uri
+
+	if [ ${auth_mode} != "none" ];then
+		[ -e "$CFG_TRUST" ] && cp -f $CFG_TRUST ${STATION_HOME}/cups.trust
+	fi
+	
+	if [ ${auth_mode} = "tls-server-client" ]; then
+		[ -e "$CFG_CRT" ] && cp -f $CFG_CRT ${STATION_HOME}/cups.crt
+		[ -e "$CFG_KEY" ] && cp -f $CFG_KEY ${STATION_HOME}/cups.key
+	fi
+	
+	if [ ${auth_mode} = "tls-server-token" ]; then
+		config_get token $1 token
+		echo -e "$token\r" > ${STATION_HOME}/cups.key
+	fi
+}
+
+tc_server(){
+
+	config_get uri $1 uri
+	[ -n "$uri" ] || return
+	config_get auth_mode $1 auth_mode
+	
+	echo "${uri}" > ${STATION_HOME}/tc.uri
+
+	if [ ${auth_mode} != "none" ];then
+		[ -e "$CFG_TRUST" ] && cp -f $CFG_TRUST ${STATION_HOME}/tc.trust
+	fi
+	
+	if [ ${auth_mode} = "tls-server-client" ]; then
+		[ -e "$CFG_CRT" ] && cp -f $CFG_CRT ${STATION_HOME}/tc.crt
+		[ -e "$CFG_KEY" ] && cp -f $CFG_KEY ${STATION_HOME}/tc.key
+	fi
+	
+	if [ ${auth_mode} = "tls-server-token" ]; then
+		config_get token $1 token
+		echo -e "$token\r" > ${STATION_HOME}/tc.key
+	fi
+}
+
+
+start_service()
+{
+	local msg=`ubus -S call sensecap  lora_network_connect '{"station":0}'`
+	mkdir -p ${STATION_HOME}
+	rm -rf ${STATION_HOME}/*
+
+	config_load lora_network
+    config_get mode network mode "packet_forwarder"
+
+	[ "$mode" != "basic_station" ] && {
+         logger "mode: not basic_station; station exit !"
+        return
+    }
+	
+	config_get server station server
+	case $server in
+	cups_boot)
+		cups_boot_server station
+	;;
+	cups)
+		cups_server station
+	;;
+	lns)
+		tc_server station
+	;;
+	esac
+	
+	/usr/bin/gen_station_conf  > ${CONFIGFILE}
+
+	logger "basicstation: Start"
+
+	procd_open_instance
+	procd_set_param command $PROG --home $STATION_HOME
+	procd_set_param file ${CONFIGFILE}
+    procd_set_param respawn 3600 5 -1
+
+	procd_set_param stdout 1
+	procd_set_param stderr 1
+	procd_close_instance
+}
+
+stop_service() {
+	local msg=`ubus -S call sensecap  lora_network_connect '{"station":0}'`
+    logger "basicstation: Stop"
+}

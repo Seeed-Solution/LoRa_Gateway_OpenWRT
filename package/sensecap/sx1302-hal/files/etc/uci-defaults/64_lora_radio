@@ -1,0 +1,45 @@
+#!/bin/sh
+
+if [ -e "/etc/config/lora_radio" ]; then
+	REGION=$(uci get lora_radio.freq_plan.region)
+	FREQ_PLAN=$(uci get lora_radio.freq_plan.cloud_freq_plan)
+	
+	if [ -n "$REGION" -a -n "$FREQ_PLAN" ];then
+		exit 0
+	fi
+else 
+	touch /etc/config/lora_radio
+fi
+
+if [ -e "/etc/deviceinfo/loraModem" ]; then
+	region=$(cat /etc/deviceinfo/loraModem)
+	case "$region" in
+		"915" | "US915") REGION_MODEM="US915"; FREQ_PLAN="US_902_928_FSB_2";;
+		"868" | "EU868") REGION_MODEM="EU868"; FREQ_PLAN="EU_863_870_TTN";;
+		"AS923")   REGION_MODEM="AS923"; FREQ_PLAN="AS_923_925_TTN";;
+		"AS923_1") REGION_MODEM="AS923"; FREQ_PLAN="AS_923_925_TTN";;
+		"AS923_2") REGION_MODEM="AS923"; FREQ_PLAN="AS_923_925_TTN";;
+		"AS923_3") REGION_MODEM="AS923"; FREQ_PLAN="AS_923_925_TTN";;
+		"AS923_4") REGION_MODEM="AS923"; FREQ_PLAN="AS_923_925_TTN";;
+		"AU915") REGION_MODEM="AU915"; FREQ_PLAN="AU_915_928_FSB_2";;
+		"IN865") REGION_MODEM="IN865"; FREQ_PLAN="IN_865_867";;
+		"KR920") REGION_MODEM="KR920"; FREQ_PLAN="KR_920_923_TTN";;
+		"RU864") REGION_MODEM="RU864"; FREQ_PLAN="RU_864_870_TTN";;
+		"CN470") REGION_MODEM="CN470"; FREQ_PLAN="CN_470_510_FSB_11";;
+		"AS923_1_LBT") REGION_MODEM="AS923"; FREQ_PLAN="AS_920_923_LBT";;
+		*) REGION_MODEM="US915";  FREQ_PLAN="US_902_928_FSB_2";;
+	esac
+else
+	REGION_MODEM="US915";  FREQ_PLAN="US_902_928_FSB_2"
+fi
+
+uci set	lora_radio.freq_plan=freq_plan
+uci set lora_radio.freq_plan.region="$REGION_MODEM"
+uci set lora_radio.freq_plan.cloud_freq_plan="$FREQ_PLAN"
+
+
+uci set	lora_radio.sx1302=sx130x
+uci commit lora_radio
+
+
+exit 0

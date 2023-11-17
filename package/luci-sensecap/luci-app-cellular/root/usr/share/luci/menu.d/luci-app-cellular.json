@@ -1,0 +1,18 @@
+{
+    "admin/network/cellular": {
+        "title": "Cellular",
+        "order": 15,
+        "action": {
+            "type": "view",
+            "path": "network/cellular"
+        },
+        "depends": {
+            "acl": [
+                "luci-mod-network-cellular"
+            ],
+            "uci": {
+                "lte_config": true
+            }
+        }
+    }
+}

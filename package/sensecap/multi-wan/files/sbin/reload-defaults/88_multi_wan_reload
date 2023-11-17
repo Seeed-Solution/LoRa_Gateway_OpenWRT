@@ -1,0 +1,15 @@
+#!/bin/sh
+
+# Multi-wan needs to be reconfigured when the configuration version is not up to date.
+mwan3_tgt_ver=`cat /rom/etc/config/.mwan3.config | grep version | awk -F ' ' '{print $2}'` #get mwan3 target config version 
+if [ ! -f "/etc/uci-defaults/88_multi_wan" ]; then
+    mwan3_config_ver=`uci get mwan3.version`
+    if [ "$mwan3_config_ver" != "$mwan3_tgt_ver" ]; then # less then target version
+        echo "reload 88_multi_wan ver: " "$mwan3_config_ver" ">>" "$mwan3_tgt_ver" > /dev/console
+        cp /rom/etc/config/.mwan3.config /etc/config/.mwan3.config  # get up to date config
+        cp /rom/etc/uci-defaults/88_multi_wan /etc/uci-defaults/88_multi_wan # reload uci defaults
+        cp /rom/etc/uci-defaults/mwan3-migrate-flush_conntrack /etc/uci-defaults/mwan3-migrate-flush_conntrack # mwan3 uci-deaults
+    fi
+fi
+ 
+exit 0

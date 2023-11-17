@@ -1,0 +1,153 @@
+#!/bin/sh
+. /usr/share/libubox/jshn.sh
+
+led_state="GREEN_BREATHED"
+led_state_backup="GREEN"
+error_state="none"
+
+IPAddress1=""
+IPAddress2=""
+IPAddress3=""
+
+if [ -z "$IPAddress1" ];then
+	IPAddress1="208.67.222.222"
+fi
+if [ -z "$IPAddress2" ];then
+	IPAddress2="8.8.8.8"
+fi
+if [ -z "$IPAddress3" ];then
+	IPAddress3="114.114.114.114"
+fi
+echo "ip_addr_1:$IPAddress1"
+echo "ip_addr_2:$IPAddress2"
+echo "ip_addr_3:$IPAddress3"
+
+
+startup=0
+run_time=$(cat /proc/uptime | awk -F. '{run_second=$1;printf("%d",run_second)}')
+if [ $run_time -gt 600 ]; then
+	startup=30
+fi
+
+function CheckNetState()
+{
+	# IPAddress1="208.67.222.222"
+	# IPAddress2="8.8.8.8"
+	# IPAddress3="114.114.114.114"
+
+	ping -c 1 -W 3 $IPAddress1 &> /dev/null
+	if [ $? -eq 0 ];then
+		echo "check net state ok"
+		return 0
+	else
+		ping -c 1 -W 3 $IPAddress2 &> /dev/null
+		if [ $? -eq 0 ];then
+			echo "check net state ok"
+			return 0
+		else
+			ping -c 1 -W 3 $IPAddress3 &> /dev/null
+			if [ $? -eq 0 ];then
+				echo "check net state ok"
+				return 0
+			else
+				echo "check net state error"
+				return 	1
+			fi
+		fi
+	fi
+}
+
+function CheckLoRaNetworkConnect()
+{
+	local lora_pkt_fwd
+	local station
+
+	LOG=`ubus -S call sensecap lora_network_connect`
+
+	if [ "$LOG" ]; then
+		json_load "$LOG"
+		json_get_var lora_pkt_fwd lora_pkt_fwd
+		json_get_var station station
+	else
+		echo "Get lora_network_connect  state fail"
+		return 0
+	fi
+	
+	if [ $lora_pkt_fwd -eq 0  -a  $station -eq 0  ]; then
+		echo "lora_network_connect state 0"
+		return 1
+	else
+		echo "network state, lora_pkt_fwd:$lora_pkt_fwd,station:$station"
+		return 0
+	fi
+}
+
+
+function SetLedColor()
+{
+	if [ "$led_state_backup" != "$1" ]; then
+		led_state_backup=$1
+		logger "rgb-serve -> led state $1"
+
+		if [ "$1" == "RED" ]; then
+			breathing_led --setm r 0
+		elif [ "$1" == "GREEN" ]; then
+			breathing_led --setm g 0
+		elif [ "$1" == "GREEN_BREATHED" ]; then
+			breathing_led --sett g 7 3 7 3
+		elif [ "$1" == "BLUE" ]; then
+			breathing_led --setm b 0
+		elif [ "$1" == "WHITE" ]; then
+			breathing_led --setm w 0
+		elif [ "$1" == "BLUE_BREATHED" ]; then
+			breathing_led --sett b 7 3 7 3
+		elif [ "$1" == "YELLOW_BREATHED" ]; then
+			breathing_led --sett y 7 3 7 3
+		elif [ "$1" == "YELLOW" ]; then
+			breathing_led --sett y 7 15 7 0
+		elif [ "$1" == "RED_BREATHED" ]; then
+			breathing_led --sett r 7 3 7 3
+		elif [ "$1" == "OFF" ]; then
+			breathing_led --setc off
+		fi
+	fi
+}
+
+function SystemStateDetect()
+{
+	local net_state
+	local lora_network_state
+
+	CheckNetState
+	net_state=$?
+
+	CheckLoRaNetworkConnect
+	lora_network_state=$?
+
+	if [ $net_state -eq 1 ]; then
+		led_state="RED"
+		error_state="network"
+		return 0
+	fi
+
+	let startup++
+	if [ $startup -ge 10 ]; then
+		if [ $lora_network_state -eq 1 ]; then
+			led_state="RED_BREATHED"
+			error_state="lora_network"
+			return 0
+		fi
+	fi
+
+	led_state="GREEN"
+}
+
+
+SetLedColor $led_state
+
+while true
+do
+	SystemStateDetect
+	SetLedColor $led_state
+	sleep 5 
+done

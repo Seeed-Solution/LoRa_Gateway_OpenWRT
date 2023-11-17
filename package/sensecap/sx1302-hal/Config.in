@@ -1,0 +1,19 @@
+menu "Configuration"
+
+config SX1302_LED_NAME
+	string "LED Name"
+	default "green:lora"
+
+config SX1302_LED_INTERVAL
+	string "LED Flash Interval"
+	default "100"
+
+config SX1302_I2C_PATH
+	string "I2C Dev Path"
+	default /dev/i2c-0
+
+config SX1302_SPI_SPEED
+	string "SPI Speed (Hz)"
+	default 2000000
+
+endmenu

@@ -1,0 +1,44 @@
+{
+	"admin/lora": {
+		"title": "LoRa",
+		"order": 60,
+		"action": {
+			"type": "firstchild",
+			"preferred": "overview",
+			"recurse": true
+		}
+	},
+	"admin/lora/channel_plan": {
+		"title": "Channel Plan",
+		"order": 3,
+		"action": {
+			"type": "view",
+			"path": "lora/channel_plan"
+		},
+		"depends": {
+			"acl": [ "luci-mod-lora-channel_plan" ]
+		}
+	},
+	"admin/lora/lora_network": {
+		"title": "LoRa Network",
+		"order": 2,
+		"action": {
+			"type": "view",
+			"path": "lora/lora_network"
+		},
+		"depends": {
+			"acl": [ "luci-mod-lora-lora_network" ]
+		}
+	},
+	"admin/lora/lora_log": {
+		"title": "LoRa Log",
+		"order": 4,
+		"action": {
+			"type": "view",
+			"path": "lora/lora_log"
+		},
+		"depends": {
+			"acl": [ "luci-mod-lora-lora_log" ]
+		}
+	}
+}

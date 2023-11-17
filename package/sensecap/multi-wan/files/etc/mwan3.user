@@ -1,0 +1,54 @@
+#!/bin/sh
+. /lib/mwan3/common.sh
+
+INTERFACE_ST_DIR="/tmp/state"
+WAN_ST_FILE="$INTERFACE_ST_DIR/wan"
+WWAN_ST_FILE="$INTERFACE_ST_DIR/wwan"
+LTE_ST_FILE="$INTERFACE_ST_DIR/lte"
+
+case "$ACTION" in
+	disconnected)
+        if [ -x "/etc/init.d/openvpn" ];then
+            LOG notice "$INTERFACE $ACTION, Restart openvpn"
+            /etc/init.d/openvpn restart
+        fi
+        LOG notice "$INTERFACE state update: 0"
+        echo -n "0" > $INTERFACE_ST_DIR/$INTERFACE
+		;;
+	connected)
+        if [ -x "/etc/init.d/openvpn" ];then
+            LOG notice "$INTERFACE $ACTION, Restart openvpn"
+            /etc/init.d/openvpn restart
+        fi
+        LOG notice "$INTERFACE state update: 1"
+        echo -n "1" > $INTERFACE_ST_DIR/$INTERFACE
+		;;
+esac
+
+if [ -f $WAN_ST_FILE ];then
+    wan_st=`cat $WAN_ST_FILE`
+else
+    wan_st=0
+fi
+
+if [ -f $WWAN_ST_FILE ];then
+    wwan_st=`cat $WWAN_ST_FILE`
+else
+    wwan_st=0
+fi
+
+if [ -f $LTE_ST_FILE ];then
+    lte_st=`cat $LTE_ST_FILE`
+else
+    lte_st=0
+fi
+
+if [ $wan_st -eq 0 ] && [ $wwan_st -eq 0 ] && [ $lte_st -eq 0 ] ; then
+    net_st=0
+else
+    net_st=1
+fi
+
+ubus call sensecap net_state "{\"state\":$net_st}"
+usleep 100
+ubus call sensecap net_state "{\"state\":$net_st}"

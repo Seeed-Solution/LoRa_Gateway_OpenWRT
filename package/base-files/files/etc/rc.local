@@ -1,0 +1,13 @@
+# Put your custom commands here that should be executed once
+# the system init finished. By default this file does nothing.
+
+/sbin/init_gpio.sh &
+/sbin/mount_mmc.sh &
+/sbin/download.sh &
+
+IP=`ifconfig eth0.2  | grep "inet addr" | awk -F ' ' '{print $2}' | awk -F ':' '{print $2}'`
+if [ "x$IP" != "x" ];then
+    echo "eth ip:$IP" > /dev/console
+fi
+
+exit 0

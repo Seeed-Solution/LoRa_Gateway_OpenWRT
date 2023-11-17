@@ -1,0 +1,23 @@
+#!/bin/sh
+
+echo "99_lte_serve uci default" > /dev/console
+
+if [ -e "/etc/deviceinfo/lte" ];then
+	is4G=$(cat /etc/deviceinfo/lte)
+else
+	is4G="no"
+fi
+
+if [ $is4G == "yes" ]; then
+uci -q batch <<-EOF >/dev/null
+	set lte_config.LTE.enable='1'
+	commit lte_config
+EOF
+else
+uci -q batch <<-EOF >/dev/null
+	set lte_config.LTE.enable='0'
+	commit lte_config
+EOF
+fi
+
+exit 0

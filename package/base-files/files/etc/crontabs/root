@@ -1,0 +1,1 @@
+*/10 * * * * /etc/init.d/sysntpd restart

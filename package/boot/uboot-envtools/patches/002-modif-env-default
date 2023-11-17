@@ -1,0 +1,53 @@
+diff --git a/include/env_default.h b/include/env_default.h
+index 8a0c3057..b77be866 100644
+--- a/include/env_default.h
++++ b/include/env_default.h
+@@ -29,6 +29,7 @@ const uchar default_environment[] = {
+ #ifdef	CONFIG_ENV_FLAGS_LIST_DEFAULT
+ 	ENV_FLAGS_VAR "=" CONFIG_ENV_FLAGS_LIST_DEFAULT "\0"
+ #endif
++	"ethaddr="	CONFIG_ETHADDR		"\0"
+ #ifdef	CONFIG_USE_BOOTARGS
+ 	"bootargs="	CONFIG_BOOTARGS			"\0"
+ #endif
+@@ -54,10 +55,10 @@ const uchar default_environment[] = {
+ 	"ethprime="	CONFIG_ETHPRIME			"\0"
+ #endif
+ #ifdef	CONFIG_IPADDR
+-	"ipaddr="	__stringify(CONFIG_IPADDR)	"\0"
++	"ipaddr=" CONFIG_IPADDR		"\0"
+ #endif
+ #ifdef	CONFIG_SERVERIP
+-	"serverip="	__stringify(CONFIG_SERVERIP)	"\0"
++	"serverip="	CONFIG_SERVERIP		"\0"
+ #endif
+ #ifdef	CONFIG_SYS_AUTOLOAD
+ 	"autoload="	CONFIG_SYS_AUTOLOAD		"\0"
+diff --git a/tools/env/fw_env_private.h b/tools/env/fw_env_private.h
+index 86be16da..5b801487 100644
+--- a/tools/env/fw_env_private.h
++++ b/tools/env/fw_env_private.h
+@@ -38,7 +38,7 @@
+ #endif
+ 
+ #ifndef CONFIG_BAUDRATE
+-#define CONFIG_BAUDRATE		115200
++#define CONFIG_BAUDRATE		57600
+ #endif
+ 
+ #ifndef CONFIG_BOOTDELAY
+@@ -46,9 +46,9 @@
+ #endif
+ 
+ #ifndef CONFIG_BOOTCOMMAND
+-#define CONFIG_BOOTCOMMAND						\
+-	"bootp; "							\
+-	"setenv bootargs root=/dev/nfs nfsroot=${serverip}:${rootpath} "\
+-	"ip=${ipaddr}:${serverip}:${gatewayip}:${netmask}:${hostname}::off; "\
+-	"bootm"
++#define CONFIG_BOOTCOMMAND "tftp"
+ #endif
++
++#define CONFIG_SERVERIP "192.168.8.3"
++#define CONFIG_IPADDR "192.168.8.254"
++#define CONFIG_ETHADDR "00:AA:BB:CC:DD:10"

@@ -1,0 +1,14 @@
+Index: linux-5.4.117/arch/mips/ralink/mt7620.c
+===================================================================
+--- linux-5.4.117.orig/arch/mips/ralink/mt7620.c
++++ linux-5.4.117/arch/mips/ralink/mt7620.c
+@@ -715,4 +715,9 @@ void prom_soc_init(struct ralink_soc_inf
+ 		rt2880_pinmux_data = mt7628an_pinmux_data;
+ 	else
+ 		rt2880_pinmux_data = mt7620a_pinmux_data;
++	
++	u32 cfg;
++	cfg = __raw_readl(sysc + 0x3c);
++	cfg |= 0x0f<<17;
++	__raw_writel(cfg, sysc + 0x3c);
+ }

@@ -1,0 +1,374 @@
+#!/bin/sh
+#
+# For controling breathe led, using the chip for AW2023.
+# AW2013 chip's slave address is 0x45.
+#
+
+#RGB_POWER_PIN=17
+RGB_POWER_PIN=497
+
+if [ ! -d /sys/class/gpio/gpio${RGB_POWER_PIN} ]; then
+	echo "${RGB_POWER_PIN}" > /sys/class/gpio/export
+	echo "out" > /sys/class/gpio/gpio${RGB_POWER_PIN}/direction
+fi
+echo "1" > /sys/class/gpio/gpio${RGB_POWER_PIN}/value
+
+function i2cset_check()
+{
+    i=0
+    
+    while [ $i -lt 6 ]
+    do
+        let i++
+
+        i2cset $1 $2 $3 $4 $5
+
+        let in=$5
+        let out=`i2cget $1 $2 $3 $4`
+
+        in_=`printf '0x%02x' $in`
+        out_=`printf '0x%02x' $out`
+
+        if [ $in -ne $out ]; then
+            logger "rgb-serve -> reg $4, set $in_, get $out_, CHECK_FAIL!"
+            usleep 10000
+        else
+            #logger "rgb-serve -> reg $4, set $in_, get $out_, CHECK_PASS!"
+            break
+        fi
+    done
+} 
+
+show_help() {
+    echo "\
+Usage: $0 [--help] [--debug] [--setc <r/g/b/y/w/off>]
+          [--setm <r/g/b> <0/1>] [--sett <r/g/b> <t1> <t2> <t3> <t4>]
+     --help                     Display help message.
+     --debug                    Interactive testing.
+                                r: red, g: green, b: blue
+                                y: yellow, w: white, off: turn off
+                                q: quit program
+     --setc <r/g/b/y/w/off>     Setting led color.
+                                r: red, g: green, b: blue
+                                y: yellow, w: white, off: turn off
+     --setm <r/g/b> <0/1>       Setting red/green/blue channel working mode.
+                                0: normal mode, 1: breathe mode
+     --sett <r/g/b/y/w> <t1> <t2> <t3> <t4>
+                                Setting red/green/blue/yellow/white period: T1 + T2 + T3 + T4.
+                                T1: rising time, T2: bright time,
+                                T3: declining time, T4: dark time.
+                                T1/2/3/4 setting value:
+                                0: 0/0.04/0/0.04s, 1: 0.13s, 2: 0.16s, 3: 0.38s,
+                                4: 0.51s, 5: 0.77s, 6: 1.04s, 7: 1.6s,
+                                8: 2.1s, 9: 2.6s, 10: 3.1s, 11: 4.2s,
+                                12: 5.2s, 13: 6.2s, 14: 7.3s, 15: 8.3s,
+     --setp <r/g/b> <0~255>     Setting red/green/blue channel pwm value.
+                                PWM value range: 0 ~ 255.
+"
+}
+
+# Before setting led status, setting led initial
+led_init() {
+    # Checking /dev/i2c-0 file
+    [ -e /dev/i2c-0 ] || return
+
+    logger "rgb-serve -> led init"
+
+    # Enable LED control
+    i2cset_check -y 0 0x45 0x01 0x01
+
+    # Disable r/g/b channels
+    i2cset_check -y 0 0x45 0x30 0x00
+
+    # Setting working mode for PWM mode
+    # Current value for 15mA
+    i2cset_check -y 0 0x45 0x31 0x6f
+    i2cset_check -y 0 0x45 0x32 0x6f
+    i2cset_check -y 0 0x45 0x33 0x6f
+
+    # Led Timing control reg0
+    i2cset_check -y 0 0x45 0x37 0x34
+    i2cset_check -y 0 0x45 0x3a 0x34
+    i2cset_check -y 0 0x45 0x3d 0x34
+
+    # Led Timing control reg1
+    i2cset_check -y 0 0x45 0x38 0x30
+    i2cset_check -y 0 0x45 0x3b 0x30
+    i2cset_check -y 0 0x45 0x3e 0x30
+
+    # Led Timing control reg2
+    i2cset_check -y 0 0x45 0x39 0x00
+    i2cset_check -y 0 0x45 0x3c 0x00
+    i2cset_check -y 0 0x45 0x3f 0x00
+
+    # Setting working mode for breathe mode
+    # Current value for 15mA
+    i2cset_check -y 0 0x45 0x31 0x7f
+    i2cset_check -y 0 0x45 0x32 0x7f
+    i2cset_check -y 0 0x45 0x33 0x7f
+
+    # Setting PWM vales
+    i2cset_check -y 0 0x45 0x34 0xff
+    i2cset_check -y 0 0x45 0x35 0xff
+    i2cset_check -y 0 0x45 0x36 0xff
+}
+
+interactive_test() {
+    echo "Please input value for setting led color."
+
+    while true
+    do
+        read -p ">>> " cmd
+        if [ "$cmd" == "r" ]; then
+            i2cset_check -y 0 0x45 0x30 0x01
+        fi
+        if [ "$cmd" == "g" ]; then
+            i2cset_check -y 0 0x45 0x30 0x02
+        fi
+        if [ "$cmd" == "b" ]; then
+            i2cset_check -y 0 0x45 0x30 0x04
+        fi
+        if [ "$cmd" == "y" ]; then
+            i2cset_check -y 0 0x45 0x31 0x7e
+            i2cset_check -y 0 0x45 0x32 0x72
+            i2cset_check -y 0 0x45 0x30 0x03
+        fi
+        if [ "$cmd" == "w" ]; then
+            i2cset_check -y 0 0x45 0x30 0x07
+        fi
+        if [ "$cmd" == "off" ]; then
+            i2cset_check -y 0 0x45 0x30 0x00
+        fi
+        if [ "$cmd" == "q" ]; then
+            exit
+        fi
+    done
+}
+
+set_led_color() {
+    if [ "$color" == "r" ]; then
+        i2cset_check -y 0 0x45 0x30 0x01
+    fi
+    if [ "$color" == "g" ]; then
+        i2cset_check -y 0 0x45 0x30 0x02
+    fi
+    if [ "$color" == "b" ]; then
+        i2cset_check -y 0 0x45 0x30 0x04
+    fi
+    if [ "$color" == "y" ]; then
+        i2cset_check -y 0 0x45 0x31 0x7e
+        i2cset_check -y 0 0x45 0x32 0x72
+        i2cset_check -y 0 0x45 0x30 0x03
+    fi
+    if [ "$color" == "w" ]; then
+		i2cset_check -y 0 0x45 0x34 0x7f
+        i2cset_check -y 0 0x45 0x35 0x7f
+        i2cset_check -y 0 0x45 0x36 0x7f
+        i2cset_check -y 0 0x45 0x30 0x07
+    fi
+    if [ "$color" == "off" ]; then
+        i2cset_check -y 0 0x45 0x30 0x00
+    fi
+}
+
+set_mode() {
+    limit=0x70
+    offset=0x10
+
+    # Setting channel register
+    if [ "$mch" == "r" ]; then
+        reg=0x31
+        i2cset_check -y 0 0x45 0x30 0x01
+    elif [ "$mch" == "g" ]; then
+        reg=0x32
+        i2cset_check -y 0 0x45 0x30 0x02
+    elif [ "$mch" == "b" ]; then
+        reg=0x33
+        i2cset_check -y 0 0x45 0x30 0x04
+	elif [ "$mch" == "w" ]; then
+        i2cset_check -y 0 0x45 0x30 0x07
+        i2cset_check -y 0 0x45 0x31 0x0f
+        i2cset_check -y 0 0x45 0x32 0x0f
+        i2cset_check -y 0 0x45 0x33 0x0f
+        i2cset_check -y 0 0x45 0x34 0x7f
+        i2cset_check -y 0 0x45 0x35 0x7f
+        i2cset_check -y 0 0x45 0x36 0x7f
+        exit
+    else
+        show_help
+        exit
+    fi
+
+    # Setting working mode
+    tmp=`i2cget -y 0 0x45 $reg`
+    tmp=$((tmp)) && limit=$((limit)) && offset=$((offset))
+
+    if [ "$mval" == "0" ]; then
+        if [ $tmp -gt $limit ]; then
+            val=`expr $tmp - $offset`
+            i2cset_check -y 0 0x45 $reg $val
+        fi
+    fi
+    if [ "$mval" == "1" ]; then
+        if [ $tmp -lt $limit ]; then
+            val=`expr $tmp + $offset`
+            i2cset_check -y 0 0x45 $reg $val
+        fi
+    fi
+}
+
+set_timer_value() {
+    tmp1=$t1
+    tmp2=$t2
+    tmp3=$t3
+    tmp4=$t4
+
+    # Setting t1/t2/t3/t4 value
+    # High 4bits
+    tmp1=$((tmp1))
+    if [ $tmp1 -lt 16 ]; then
+        tmp1=`expr $tmp1 \* 16`
+    else
+        echo $tmp1
+        show_help
+        exit
+    fi
+
+    # Low 4bits
+    tmp2=$((tmp2))
+    if [ $tmp2 -lt 16 ]; then
+        tmp2=`expr $tmp2`
+    else
+        show_help
+        exit
+    fi
+
+    # High 4bits
+    tmp3=$((tmp3))
+    if [ $tmp3 -lt 16 ]; then
+        tmp3=`expr $tmp3 \* 16`
+    else
+        show_help
+        exit
+    fi
+
+    # Low 4bits
+    tmp4=$((tmp4))
+    if [ $tmp4 -lt 16 ]; then
+        tmp4=`expr $tmp4`
+    else
+        show_help
+        exit
+    fi
+
+    # Calc writing value
+    tmp=`expr $tmp1 + $tmp2`
+    i2cset_check -y 0 0x45 $reg1 $tmp
+
+    tmp=`expr $tmp3 + $tmp4`
+    i2cset_check -y 0 0x45 $reg2 $tmp
+}
+
+set_timer() {
+    # Setting channel register
+    if [ "$tch" == "r" ]; then
+        reg1=0x37 && reg2=0x38 && set_timer_value
+        i2cset_check -y 0 0x45 0x30 0x01
+    elif [ "$tch" == "g" ]; then
+        reg1=0x3a && reg2=0x3b && set_timer_value
+        i2cset_check -y 0 0x45 0x30 0x02
+    elif [ "$tch" == "b" ]; then
+        reg1=0x3d && reg2=0x3e && set_timer_value
+        i2cset_check -y 0 0x45 0x30 0x04
+    elif [ "$tch" == "y" ]; then
+        i2cset_check -y 0 0x45 0x31 0x7e
+        i2cset_check -y 0 0x45 0x32 0x72
+        reg1=0x37 && reg2=0x38 && set_timer_value
+        reg1=0x3a && reg2=0x3b && set_timer_value
+        i2cset_check -y 0 0x45 0x30 0x03
+    elif [ "$tch" == "w" ]; then
+        reg1=0x37 && reg2=0x38 && set_timer_value
+        reg1=0x3a && reg2=0x3b && set_timer_value
+        reg1=0x3d && reg2=0x3e && set_timer_value
+        i2cset_check -y 0 0x45 0x34 0x7f
+        i2cset_check -y 0 0x45 0x35 0x7f
+        i2cset_check -y 0 0x45 0x36 0x7f
+		i2cset_check -y 0 0x45 0x30 0x07
+    else
+        show_help
+        exit
+    fi
+}
+
+set_pwm() {
+    # Setting channel register
+    if [ "$pch" == "r" ]; then
+        reg=0x34
+        i2cset_check -y 0 0x45 0x30 0x01
+    elif [ "$pch" == "g" ]; then
+        reg=0x35
+        i2cset_check -y 0 0x45 0x30 0x02
+    elif [ "$pch" == "b" ]; then
+        reg=0x36
+        i2cset_check -y 0 0x45 0x30 0x04
+    else
+        show_help
+        exit
+    fi
+
+    # Checking PWM's range
+    tmp=$((pval))
+    if [ $tmp -lt 0 ]; then
+        show_help
+        exit
+    fi
+    if [ $tmp -gt 255 ]; then
+        show_help
+        exit
+    fi
+
+    # Setting PWM
+    i2cset_check -y 0 0x45 $reg $pval
+}
+
+if [ $# -eq 0 ]; then
+    show_help
+    exit
+fi
+
+for i in "$@"
+do
+    case $i in
+        --help)
+            show_help
+            exit
+            ;;
+        --debug)
+            led_init && interactive_test
+            ;;
+        --setc)
+            color=$2
+            led_init && set_led_color
+            exit
+            ;;
+        --setm)
+            mch=$2 && mval=$3
+            led_init && set_mode
+            exit
+            ;;
+        --sett)
+            tch=$2 && t1=$3 && t2=$4 && t3=$5 && t4=$6
+            led_init && set_timer
+            exit
+            ;;
+        --setp)
+            pch=$2 && pval=$3
+            led_init && set_pwm
+            exit
+            ;;
+        *)
+            show_help
+            exit
+            ;;
+    esac
+done

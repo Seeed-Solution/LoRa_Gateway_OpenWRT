@@ -1,0 +1,56 @@
+#!/bin/sh
+
+. /lib/functions.sh
+
+OVERLAY="$( grep ' /overlay ' /proc/mounts )"
+
+case "$ACTION" in
+pressed)
+	echo "BUTTON PRESSED" > /dev/console
+	[ -z "$OVERLAY" ] && return 0
+
+	return 5
+;;
+timeout)
+	. /etc/diag.sh
+	set_state failsafe
+;;
+released)
+	if [ "$SEEN" -lt 1 ]
+	then
+		stamp=`cat /proc/uptime|awk '{print $1}'`
+		new=`echo ${stamp/./}`
+		
+		if [ ! -e "/tmp/tmp.reset" ]; then
+			touch /tmp/tmp.reset
+		fi
+		
+		old=`cat /tmp/tmp.reset`
+		if [ "$old" != "" ]; then
+			offset=`expr $new - $old`
+			if [ $offset -le 30 ]; then
+				echo "REBOOT" > /dev/console
+				sync
+				sleep 2
+				reboot
+			else
+				echo $new > /tmp/tmp.reset
+			fi
+		else
+			echo $new > /tmp/tmp.reset
+		fi
+	elif [ "$SEEN" -ge 5 -a -n "$OVERLAY" ]
+	then
+		if [ -x "/etc/init.d/rgb-serve" ];then
+			/etc/init.d/rgb-serve stop &> /dev/null
+		fi
+		if [ -x "/usr/bin/breathing_led" ];then
+			/usr/bin/breathing_led --sett b 0 1 0 1
+		fi
+		echo "FACTORY RESET" > /dev/console
+		jffs2reset -y && reboot &
+	fi
+;;
+esac
+
+return 0

@@ -1,0 +1,31 @@
+#!/bin/sh /etc/rc.common
+START=53
+STOP=10
+
+USE_PROCD=1
+PROG=/usr/bin/rgb-serve
+
+start_service()
+{
+	procd_open_instance
+	procd_set_param command $PROG
+	procd_set_param respawn 3600 60 60
+	procd_close_instance
+}
+
+stop_service()
+{
+	echo "breathing led off"
+	#breathing_led --setc off
+}
+
+service_triggers()
+{
+	procd_add_reload_trigger "rgb_config"
+}
+
+reload_service()
+{
+	stop
+	start
+}

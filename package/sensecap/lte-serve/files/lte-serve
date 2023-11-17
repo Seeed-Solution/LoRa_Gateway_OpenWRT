@@ -1,0 +1,76 @@
+#!/bin/sh
+
+enable=$(uci get lte_config.LTE.enable) 2>/dev/null
+if [ $enable != "1" ]; then
+	/etc/init.d/lte-serve disable
+	/etc/init.d/lte-serve stop
+	exit 0
+fi
+
+cmd=""
+apn=$(uci get lte_config.LTE.apn) 2>/dev/null
+user=$(uci get lte_config.LTE.user) 2>/dev/null
+password=$(uci get lte_config.LTE.password) 2>/dev/null
+auth=$(uci get lte_config.LTE.auth) 2>/dev/null
+pincode=$(uci get lte_config.LTE.pincode) 2>/dev/null
+
+
+#LTE_POWER_PIN=0
+#LTE_RESET_PIN=19
+#LTE_PWRKEY_PIN=41
+LTE_POWER_PIN=480
+LTE_RESET_PIN=499
+LTE_PWRKEY_PIN=457
+
+# PowerKey
+if [ ! -d "/sys/class/gpio/gpio${LTE_PWRKEY_PIN}" ]; then
+	echo "${LTE_PWRKEY_PIN}" > /sys/class/gpio/export
+	echo "out" > /sys/class/gpio/gpio${LTE_PWRKEY_PIN}/direction
+fi
+echo "1" > /sys/class/gpio/gpio${LTE_PWRKEY_PIN}/value
+
+# PowerOn
+if [ ! -d "/sys/class/gpio/gpio${LTE_POWER_PIN}" ]; then
+	echo "${LTE_POWER_PIN}" > /sys/class/gpio/export
+	echo "out" > /sys/class/gpio/gpio${LTE_POWER_PIN}/direction
+fi
+echo "1" > /sys/class/gpio/gpio${LTE_POWER_PIN}/value
+
+# Reset
+if [ ! -d "/sys/class/gpio/gpio${LTE_RESET_PIN}" ]; then
+	echo "${LTE_RESET_PIN}" > /sys/class/gpio/export
+	echo "out" > /sys/class/gpio/gpio${LTE_RESET_PIN}/direction
+fi
+echo "0" > /sys/class/gpio/gpio${LTE_RESET_PIN}/value
+
+i=0
+while true
+do
+	if [ $apn != "unknow" ]; then
+		cmd="-s $apn"
+	fi
+
+	if [ $apn != "unknow" -a $user != "unknow" -a $password != "unknow" -a $auth != "unknow" ]; then
+		cmd="-s $apn $user $password $auth"
+	fi
+
+	if [ $pincode != "unknow" ]; then
+		cmd="$cmd -p $pincode"
+	fi
+
+	id=$(pgrep -f "quectel-CM")
+	if [ "$id" == "" ]; then
+		let i++
+		if [ $i -ge 5 ]; then
+			i=0
+			logger "quectel reset"
+			/usr/bin/quectel-reset.sh
+		fi
+		logger "quectel-CM $cmd &"
+		/usr/bin/quectel-CM $cmd &
+	else
+		i=0
+	fi
+
+	sleep 20
+done

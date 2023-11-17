@@ -1,0 +1,34 @@
+#!/bin/sh
+
+if [ -e "/etc/config/lora_network" ]; then
+	mode=$(uci get lora_network.network.mode)
+
+	if [  -n "$mode" ];then
+		exit 0
+	fi
+else 
+	touch /etc/config/lora_network
+fi
+
+
+MAC_STR=`cat /sys/class/net/eth0/address`
+MAC_FORMATTED=$(echo $MAC_STR | sed 's/://g' | tr 'a-f' 'A-F')
+DEFAULT_EUI="${MAC_FORMATTED}0000"
+
+echo  $DEFAULT_EUI > /etc/deviceinfo/eui #set default eui
+
+uci set	lora_network.network=network
+uci set lora_network.network.mode="packet_forwarder"
+
+uci set	lora_network.station=station
+uci set	lora_network.network_server=network_server
+uci set	lora_network.lora_pkt_fwd=gateway_conf
+
+uci set	lora_network.lora_pkt_fwd.gateway_ID=$DEFAULT_EUI
+uci set	lora_network.lora_pkt_fwd.server_address='eu1.cloud.thethings.network'
+uci set	lora_network.lora_pkt_fwd.serv_port_up='1700'
+uci set	lora_network.lora_pkt_fwd.serv_port_down='1700'
+
+uci commit lora_network
+
+exit 0

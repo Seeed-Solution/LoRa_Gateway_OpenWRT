@@ -1,0 +1,7 @@
+config interface 'LTE'
+	option enable '1'
+	option apn 'unknow'
+	option user 'unknow'
+	option password 'unknow'
+	option auth 'unknow'
+	option pincode 'unknow'

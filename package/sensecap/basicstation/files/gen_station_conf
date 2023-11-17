@@ -1,0 +1,363 @@
+#!/usr/bin/lua
+
+local uloop = require("uloop")
+local ubus  = require("ubus")
+local json  = require "dkjson"
+local uci   = require "uci"
+
+
+local tx_gain_lut_915_low = {
+    { rf_power = 1, pa_gain = 0, pwr_idx = 5 },
+    { rf_power = 2, pa_gain = 0, pwr_idx = 6 },
+    { rf_power = 3, pa_gain = 0, pwr_idx = 7 },
+    { rf_power = 4, pa_gain = 0, pwr_idx = 8 },
+    { rf_power = 5, pa_gain = 0, pwr_idx = 9 },
+    { rf_power = 6, pa_gain = 0, pwr_idx = 10 },
+    { rf_power = 7, pa_gain = 0, pwr_idx = 11 },
+    { rf_power = 8, pa_gain = 0, pwr_idx = 12 },
+    { rf_power = 9, pa_gain = 0, pwr_idx = 13 },
+    { rf_power = 10, pa_gain = 0, pwr_idx = 14 },
+    { rf_power = 11, pa_gain = 0, pwr_idx = 15 },
+    { rf_power = 12, pa_gain = 0, pwr_idx = 16 },
+    { rf_power = 13, pa_gain = 0, pwr_idx = 17 },
+    { rf_power = 14, pa_gain = 0, pwr_idx = 18 },
+    { rf_power = 15, pa_gain = 0, pwr_idx = 19 },
+    { rf_power = 16, pa_gain = 1, pwr_idx = 3 },
+    { rf_power = 17, pa_gain = 1, pwr_idx = 4 },
+    { rf_power = 18, pa_gain = 1, pwr_idx = 5 },
+    { rf_power = 19, pa_gain = 1, pwr_idx = 6 },
+    { rf_power = 20, pa_gain = 1, pwr_idx = 7 },
+    { rf_power = 21, pa_gain = 1, pwr_idx = 8 },
+    { rf_power = 22, pa_gain = 1, pwr_idx = 9 },
+    { rf_power = 23, pa_gain = 1, pwr_idx = 11 },
+    { rf_power = 24, pa_gain = 1, pwr_idx = 12 },
+    { rf_power = 25, pa_gain = 1, pwr_idx = 13 },
+    { rf_power = 26, pa_gain = 1, pwr_idx = 14 },
+    { rf_power = 27, pa_gain = 1, pwr_idx = 15 }
+}
+local tx_gain_lut_915_high = {
+    { rf_power = 1, pa_gain = 0, pwr_idx = 5 },
+    { rf_power = 2, pa_gain = 0, pwr_idx = 6 },
+    { rf_power = 3, pa_gain = 0, pwr_idx = 7 },
+    { rf_power = 4, pa_gain = 0, pwr_idx = 8 },
+    { rf_power = 5, pa_gain = 0, pwr_idx = 9 },
+    { rf_power = 6, pa_gain = 0, pwr_idx = 10 },
+    { rf_power = 7, pa_gain = 0, pwr_idx = 11 },
+    { rf_power = 8, pa_gain = 0, pwr_idx = 12 },
+    { rf_power = 9, pa_gain = 0, pwr_idx = 13 },
+    { rf_power = 10, pa_gain = 0, pwr_idx = 14 },
+    { rf_power = 11, pa_gain = 0, pwr_idx = 15 },
+    { rf_power = 12, pa_gain = 0, pwr_idx = 16 },
+    { rf_power = 13, pa_gain = 0, pwr_idx = 17 },
+    { rf_power = 14, pa_gain = 0, pwr_idx = 18 },
+    { rf_power = 15, pa_gain = 0, pwr_idx = 19 },
+    { rf_power = 16, pa_gain = 1, pwr_idx = 3 },
+    { rf_power = 17, pa_gain = 1, pwr_idx = 4 },
+    { rf_power = 18, pa_gain = 1, pwr_idx = 5 },
+    { rf_power = 19, pa_gain = 1, pwr_idx = 6 },
+    { rf_power = 20, pa_gain = 1, pwr_idx = 7 },
+    { rf_power = 21, pa_gain = 1, pwr_idx = 8 },
+    { rf_power = 22, pa_gain = 1, pwr_idx = 9 },
+    { rf_power = 23, pa_gain = 1, pwr_idx = 11 },
+    { rf_power = 24, pa_gain = 1, pwr_idx = 12 },
+    { rf_power = 25, pa_gain = 1, pwr_idx = 13 },
+    { rf_power = 26, pa_gain = 1, pwr_idx = 14 },
+    { rf_power = 27, pa_gain = 1, pwr_idx = 15 }
+}
+local tx_gain_lut_868_low = {
+    { rf_power = 1, pa_gain = 0, pwr_idx = 4 },
+    { rf_power = 2, pa_gain = 0, pwr_idx = 5 },
+    { rf_power = 3, pa_gain = 0, pwr_idx = 6 },
+    { rf_power = 4, pa_gain = 0, pwr_idx = 7 },
+    { rf_power = 5, pa_gain = 0, pwr_idx = 8 },
+    { rf_power = 6, pa_gain = 0, pwr_idx = 9 },
+    { rf_power = 7, pa_gain = 0, pwr_idx = 10 },
+    { rf_power = 8, pa_gain = 0, pwr_idx = 11 },
+    { rf_power = 9, pa_gain = 0, pwr_idx = 12 },
+    { rf_power = 10, pa_gain = 0, pwr_idx = 13 },
+    { rf_power = 11, pa_gain = 0, pwr_idx = 14 },
+    { rf_power = 12, pa_gain = 0, pwr_idx = 15 },
+    { rf_power = 13, pa_gain = 0, pwr_idx = 16 },
+    { rf_power = 14, pa_gain = 0, pwr_idx = 17 },
+    { rf_power = 15, pa_gain = 0, pwr_idx = 18 },
+    { rf_power = 16, pa_gain = 0, pwr_idx = 19 },
+    { rf_power = 17, pa_gain = 1, pwr_idx = 1 },
+    { rf_power = 18, pa_gain = 1, pwr_idx = 2 },
+    { rf_power = 19, pa_gain = 1, pwr_idx = 3 },
+    { rf_power = 20, pa_gain = 1, pwr_idx = 4 },
+    { rf_power = 21, pa_gain = 1, pwr_idx = 5 },
+    { rf_power = 22, pa_gain = 1, pwr_idx = 6 },
+    { rf_power = 23, pa_gain = 1, pwr_idx = 7 },
+    { rf_power = 24, pa_gain = 1, pwr_idx = 8 },
+    { rf_power = 25, pa_gain = 1, pwr_idx = 10 },
+    { rf_power = 26, pa_gain = 1, pwr_idx = 13 },
+    { rf_power = 27, pa_gain = 1, pwr_idx = 16 }
+}
+local tx_gain_lut_868_high = {
+    { rf_power = 1, pa_gain = 0, pwr_idx = 4 },
+    { rf_power = 2, pa_gain = 0, pwr_idx = 5 },
+    { rf_power = 3, pa_gain = 0, pwr_idx = 6 },
+    { rf_power = 4, pa_gain = 0, pwr_idx = 7 },
+    { rf_power = 5, pa_gain = 0, pwr_idx = 8 },
+    { rf_power = 6, pa_gain = 0, pwr_idx = 9 },
+    { rf_power = 7, pa_gain = 0, pwr_idx = 10 },
+    { rf_power = 8, pa_gain = 0, pwr_idx = 11 },
+    { rf_power = 9, pa_gain = 0, pwr_idx = 12 },
+    { rf_power = 10, pa_gain = 0, pwr_idx = 13 },
+    { rf_power = 11, pa_gain = 0, pwr_idx = 14 },
+    { rf_power = 12, pa_gain = 0, pwr_idx = 15 },
+    { rf_power = 13, pa_gain = 0, pwr_idx = 16 },
+    { rf_power = 14, pa_gain = 0, pwr_idx = 17 },
+    { rf_power = 15, pa_gain = 0, pwr_idx = 18 },
+    { rf_power = 16, pa_gain = 0, pwr_idx = 19 },
+    { rf_power = 17, pa_gain = 1, pwr_idx = 1 },
+    { rf_power = 18, pa_gain = 1, pwr_idx = 2 },
+    { rf_power = 19, pa_gain = 1, pwr_idx = 3 },
+    { rf_power = 20, pa_gain = 1, pwr_idx = 4 },
+    { rf_power = 21, pa_gain = 1, pwr_idx = 5 },
+    { rf_power = 22, pa_gain = 1, pwr_idx = 6 },
+    { rf_power = 23, pa_gain = 1, pwr_idx = 7 },
+    { rf_power = 24, pa_gain = 1, pwr_idx = 8 },
+    { rf_power = 25, pa_gain = 1, pwr_idx = 10 },
+    { rf_power = 26, pa_gain = 1, pwr_idx = 13 },
+    { rf_power = 27, pa_gain = 1, pwr_idx = 16 }
+}
+
+
+local tx_gain_lut_470 = {
+    { rf_power = -6, pa_gain = 1, pwr_idx = 0 },
+    { rf_power = -3, pa_gain = 1, pwr_idx = 1 },
+    { rf_power =  0, pa_gain = 1, pwr_idx = 2 },
+    { rf_power =  3, pa_gain = 0, pwr_idx = 3 },
+    { rf_power =  6, pa_gain = 0, pwr_idx = 4 },
+    { rf_power = 10, pa_gain = 0, pwr_idx = 5 },
+    { rf_power = 11, pa_gain = 0, pwr_idx = 6 },
+    { rf_power = 12, pa_gain = 0, pwr_idx = 7 },
+    { rf_power = 13, pa_gain = 0, pwr_idx = 8 },
+    { rf_power = 14, pa_gain = 0, pwr_idx = 9 },
+    { rf_power = 16, pa_gain = 0, pwr_idx = 10 },
+    { rf_power = 20, pa_gain = 0, pwr_idx = 11 },
+    { rf_power = 23, pa_gain = 0, pwr_idx = 12 },
+    { rf_power = 25, pa_gain = 0, pwr_idx = 13 },
+    { rf_power = 26, pa_gain = 0, pwr_idx = 14 },
+    { rf_power = 27, pa_gain = 0, pwr_idx = 15 }
+}
+
+
+local SX1302_conf = {
+    device = "/dev/spidev0.1",
+    lorawan_public = true,
+    clksrc = 0,
+    full_duplex = false,
+    fine_timestamp = {
+        enable = false,
+        mode = "all_sf",
+    },
+    radio_0 = {
+        type = "SX1250",
+        enable = true,
+        rssi_offset = 0, --replace
+        rssi_tcomp = {
+            coeff_a = 0,
+            coeff_b = 0,
+            coeff_c = 20.41,
+            coeff_d = 2162.56,
+            coeff_e = 0
+        },
+        antenna_gain = 2.7,
+        tx_enable = true,
+        tx_gain_lut = {} --replace
+    },
+    radio_1 = {
+        enable = true;
+        type = "SX1250",
+        rssi_offset = -213.0, --replace
+        rssi_tcomp = {
+            coeff_a = 0,
+            coeff_b = 0,
+            coeff_c = 20.41,
+            coeff_d = 2162.56,
+            coeff_e = 0
+        },
+        tx_enable = false
+    }
+}
+
+local station_conf = {
+    radio_init = "/etc/station/radio_init.sh",
+    RADIO_INIT_WAIT = "5s",
+    routerid = "AA555A0000000000", --replace
+    RX_POLL_INTV = "10ms",
+    TC_TIMEOUT = "120s",
+    log_file = "stderr",
+    log_level = "DEBUG"
+}
+
+local station = {}
+
+local function cmd_execute(cmd)
+    if (cmd) then
+        local pfd = io.popen(cmd)
+        local ret = pfd:read()
+        pfd:close()
+        return ret
+    end
+    return nil
+end
+
+local function conf_json_get()
+    local str
+    local file  = "/etc/station/station.conf"
+    local fd = io.open(file, "r")
+    if fd == nil then
+        error("open %s file fail "..file)
+        return nil
+    else
+        str = fd:read("*a")
+        fd:close()
+    end
+    local conf_json = json.decode(str)
+    if conf_json ~= nil then
+        return conf_json
+    end
+    error("Decode file fail:"..file)
+end
+
+
+
+local region_switch = {
+    ["US915"] = function (lora_radio_table)
+        SX1302_conf.radio_0.rssi_offset = -213.0
+        SX1302_conf.radio_1.rssi_offset = -213.0
+        SX1302_conf.radio_0.tx_gain_lut = tx_gain_lut_915_high
+        return SX1302_conf
+    end,
+
+    ["AU915"] = function (lora_radio_table)
+        SX1302_conf.radio_0.rssi_offset = -213.0
+        SX1302_conf.radio_1.rssi_offset = -213.0
+        SX1302_conf.radio_0.tx_gain_lut = tx_gain_lut_915_low
+        return SX1302_conf
+    end,
+
+    ["AS923"] = function (lora_radio_table)
+        SX1302_conf.radio_0.rssi_offset = -213.0
+        SX1302_conf.radio_1.rssi_offset = -213.0
+        SX1302_conf.radio_0.tx_gain_lut = tx_gain_lut_915_high
+        return SX1302_conf
+    end,
+
+    ["KR920"] = function (lora_radio_table)
+        SX1302_conf.radio_0.rssi_offset = -213.0
+        SX1302_conf.radio_1.rssi_offset = -213.0
+        SX1302_conf.radio_0.tx_gain_lut = tx_gain_lut_915_high
+        return SX1302_conf
+    end,
+
+    ["EU868"] = function (lora_radio_table)
+        SX1302_conf.radio_0.rssi_offset = -215.0
+        SX1302_conf.radio_1.rssi_offset = -215.0
+        SX1302_conf.radio_0.tx_gain_lut = tx_gain_lut_868_low
+        return SX1302_conf
+    end,
+
+    ["IN865"] = function (lora_radio_table)
+        SX1302_conf.radio_0.rssi_offset = -215.0
+        SX1302_conf.radio_1.rssi_offset = -215.0
+        SX1302_conf.radio_0.tx_gain_lut = tx_gain_lut_868_high
+        return SX1302_conf
+    end,
+
+    ["RU864"] = function (lora_radio_table)
+        SX1302_conf.radio_0.rssi_offset = -215.0
+        SX1302_conf.radio_1.rssi_offset = -215.0
+        SX1302_conf.radio_0.tx_gain_lut = tx_gain_lut_868_high
+        return SX1302_conf
+    end,
+    
+    ["CN470"] = function (lora_radio_table)
+        SX1302_conf.radio_0.rssi_offset = -207.0
+        SX1302_conf.radio_1.rssi_offset = -207.0
+        SX1302_conf.radio_0.tx_gain_lut = tx_gain_lut_470
+        return SX1302_conf
+    end,
+
+    ["Customized915"] = function (lora_radio_table)
+        SX1302_conf.radio_0.rssi_offset = -215.0
+        if lora_radio_table.sx1302.tx_gain_lut == "0" then
+            SX1302_conf.radio_0.tx_gain_lut = tx_gain_lut_915_low
+        else
+            SX1302_conf.radio_0.tx_gain_lut = tx_gain_lut_915_high
+        end
+        return SX1302_conf
+    end,
+
+    ["Customized868"] = function (lora_radio_table)
+        SX1302_conf.radio_0.rssi_offset = -213.0
+        if lora_radio_table.sx1302.tx_gain_lut == "0" then
+            SX1302_conf.radio_0.tx_gain_lut = tx_gain_lut_868_low
+        else
+            SX1302_conf.radio_0.tx_gain_lut = tx_gain_lut_868_high
+        end
+        return SX1302_conf
+    end,
+
+    ["Customized470"] = function (lora_radio_table)
+        SX1302_conf.radio_0.rssi_offset = -207.0
+        SX1302_conf.radio_1.rssi_offset = -207.0
+        SX1302_conf.radio_0.tx_gain_lut = tx_gain_lut_470
+        return SX1302_conf
+    end,
+}
+
+local function sx1302_conf_set(conn)
+    local lora_radio_ubus = conn:call("uci", "get", { config = "lora_radio" })
+    local lora_radio_table = lora_radio_ubus["values"]
+    if not lora_radio_table then
+        error("Failed to get lora_radio file")
+        return -1
+    end
+    local region    = lora_radio_table.freq_plan.region
+
+    return region_switch[region](lora_radio_table)
+end
+
+
+local function station_conf_set(conn, station_conf)
+    local lora_network_ubus = conn:call("uci", "get", { config = "lora_network" })
+    local lora_network_table = lora_network_ubus["values"]
+    if not lora_network_table then
+        error("Failed to get lora_network file")
+        return -1
+    end
+    local mode = lora_network_table.network.mode
+
+    local gps = cmd_execute("cat /etc/deviceinfo/gps")
+    if  gps ~= nil and gps == "yes" then
+        station_conf.gps = "/dev/ttyS2"
+    end
+
+    if mode == "basic_station" then
+        station_conf.routerid = lora_network_table.station.gateway_ID
+    end
+    return station_conf
+end
+
+local function main()
+    uci.cursor()
+    uloop.init()
+
+    local conn = ubus.connect()
+    if not conn then
+        error("Failed to connect to ubus")
+    end
+
+    station.SX1302_conf = sx1302_conf_set(conn)
+
+    station.station_conf = station_conf
+    station_conf_set(conn, station.station_conf)
+
+    return json.encode(station, { indent = true })
+end
+
+print(main())

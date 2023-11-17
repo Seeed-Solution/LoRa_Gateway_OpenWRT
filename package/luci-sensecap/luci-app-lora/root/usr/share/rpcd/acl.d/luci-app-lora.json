@@ -1,0 +1,58 @@
+{
+	"luci-mod-lora-channel_plan": {
+		"description": "Channel Plan",
+		"write": {
+			"file": {
+				"/etc/init.d/lora_pkt_fwd": [ "exec" ],
+				"/etc/init.d/station": [ "exec" ]
+			},
+			"ubus": {
+					"file": [ "exec" ]
+			},
+			"uci": [ "lora_radio" ]
+		},
+		"read": {
+			"file": {
+				"/etc/lora/freq_plan.json": [ "read" ]
+			},
+			"uci": [ "lora_radio", "lora_network" ]
+		}
+	},
+	"luci-mod-lora-lora_network": {
+		"description": "LoRa Network",
+		"write": {
+			"file": {
+				"/etc/station/server.trust": [ "write" ],
+				"/etc/station/client.crt": [ "write" ],
+				"/etc/station/client.key": [ "write" ],
+				"/etc/init.d/lora_pkt_fwd": [ "exec" ],
+				"/etc/init.d/station": [ "exec" ]
+			},
+			"ubus": {
+					"file": [ "exec" ]
+			},
+			"uci": [ "lora_network" ]
+		},
+		"read": {
+			"file": {
+				"/etc/station/server.trust": [ "read" ],
+				"/etc/station/client.crt": [ "read" ],
+				"/etc/station/client.key": [ "read" ]
+			},
+			"uci": [ "lora_network" ]
+		}
+	},
+	"luci-mod-lora-lora_log": {
+		"description": "LoRa Log",
+		"read": {
+			"cgi-io": [ "exec" ],
+			"file": {
+				"/sbin/logread -e lora_pkt_fwd": [ "exec" ],
+				"/sbin/logread -e station": [ "exec" ],
+				"/usr/sbin/logread -e lora_pkt_fwd": [ "exec" ],
+				"/usr/sbin/logread -e station": [ "exec" ]
+			},
+			"uci": [ "lora_network" ]
+		}
+	}
+}

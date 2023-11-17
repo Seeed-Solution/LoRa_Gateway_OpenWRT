@@ -1,0 +1,24 @@
+#!/bin/ash
+
+#[ "$ACTION" = "add" -o "$ACTION" = "remove" ] && /sbin/block hotplug
+case "$ACTION" in
+	add)		
+		DEV=$(ls /dev/ | grep 'mmcblk0p1')
+		if [ $DEV == "mmcblk0p1" ]; then
+			#echo "$DEV mount" > /dev/console
+			mkdir -p /mnt/mmcblk0
+			mount /dev/mmcblk0p1 /mnt/mmcblk0
+		fi
+	;;
+	remove)		
+		for i in $(mount | grep -o '/mnt/mmcblk0')
+		do
+			#echo "$i umount" > /dev/console
+			umount $i
+			
+			if [ $i != 0 ]; then
+				rm -r $i
+			fi
+		done
+	;;
+esac

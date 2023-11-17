@@ -1,0 +1,11 @@
+{
+	"luci-mod-network-cellular": {
+		"description": "Grant access to network Cellular",
+		"read": {
+			"uci": [ "lte_config" ]
+		},
+		"write": {
+			"uci": [ "lte_config" ]
+		}
+	}
+}

@@ -1,0 +1,74 @@
+#!/bin/sh
+
+mv /etc/config/.mwan3.config /etc/config/mwan3
+
+uci -q batch <<-EOF >/dev/null
+
+		del network.wan6
+
+		set network.wan.metric=1
+
+		set network.wwan=interface
+	  	set network.wwan.proto='dhcp'
+		set network.wwan.metric=2
+
+		set network.lte=interface                                                                                                                                                
+	  	set network.lte.proto='dhcp'
+	    set network.lte.device='wwan0'
+		set network.lte.metric=3
+
+		commit network
+EOF
+
+if [ -e "/etc/deviceinfo/lte" ]; then
+	lte=$(cat /etc/deviceinfo/lte)
+else
+	lte="no"
+fi
+
+if [ "$lte" == "yes" ]; then
+	uci -q batch <<-EOF >/dev/null
+
+		set network.lte=interface
+		set network.lte.proto='dhcp'
+		set network.lte.device='wwan0'
+		set network.lte.metric=3
+
+		commit network
+
+		set mwan3.all.use_policy='w1_ww2_lte3'
+
+		commit mwan3
+
+		add_list firewall.@zone[1].network='lte'
+		commit firewall
+
+	EOF
+else
+	uci -q batch <<-EOF >/dev/null
+
+		del network.lte
+
+		commit network
+
+		del mwan3.lte
+		set mwan3.all.use_policy='w1_ww2'
+
+		commit mwan3
+	EOF
+fi
+
+inface=`uci get wireless.wifinet0` 2>/dev/null
+if [ "$inface" != "" ]; then
+	disabled=`uci get wireless.wifinet0.disabled` 2>/dev/null
+	if [ "$disabled" == "" -o "$disabled" == "0" ]; then
+		ssid=`uci get wireless.wifinet0.ssid` 2>/dev/null
+		key=`uci get wireless.wifinet0.key` 2>/dev/null
+		if [ "$ssid" == "" -a "$key" == "" ]; then
+			uci del wireless.wifinet0
+			uci commit
+		fi
+	fi
+fi 
+
+exit 0
