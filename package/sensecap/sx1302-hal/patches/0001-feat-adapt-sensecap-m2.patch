@@ -1,0 +1,1628 @@
+From 9df952357f1a5755ed2728eeb7bfeb84ccc33b57 Mon Sep 17 00:00:00 2001
+From: virgil <virgil.wang.cj@gmail.com>
+Date: Wed, 22 Nov 2023 15:59:45 +0800
+Subject: [PATCH] feat: adapt sensecap-m2
+
+---
+ libloragw/Makefile                     |   5 +-
+ libloragw/inc/loragw_hal.h             |   2 +-
+ libloragw/inc/loragw_i2c.h             |   5 +-
+ libloragw/inc/loragw_led.h             |  37 ++
+ libloragw/inc/loragw_spi.h             |   2 +
+ libloragw/src/loragw_gps.c             |  45 ++-
+ libloragw/src/loragw_hal.c             |  41 +-
+ libloragw/src/loragw_led.c             |  44 +++
+ libloragw/src/loragw_spi.c             |  40 +-
+ libloragw/src/sx1250_spi.c             |  31 +-
+ libloragw/src/sx125x_spi.c             |  31 +-
+ libloragw/src/sx1261_spi.c             |  49 ++-
+ libloragw/tst/test_loragw_com_sx1261.c |  16 +-
+ libloragw/tst/test_loragw_gps.c        |  14 +-
+ libloragw/tst/test_loragw_i2c.c        |   6 +-
+ packet_forwarder/src/jitqueue.c        |  10 +-
+ packet_forwarder/src/lora_pkt_fwd.c    | 520 ++++++++++++++++++++-----
+ 17 files changed, 663 insertions(+), 235 deletions(-)
+ create mode 100644 libloragw/inc/loragw_led.h
+ create mode 100644 libloragw/src/loragw_led.c
+
+diff --git a/libloragw/Makefile b/libloragw/Makefile
+index 881442f..ff5254b 100644
+--- a/libloragw/Makefile
++++ b/libloragw/Makefile
+@@ -18,7 +18,7 @@ INCLUDES = $(wildcard inc/*.h) $(wildcard ../libtools/inc/*.h)
+ 
+ ### linking options
+ 
+-LIBS := -lloragw -ltinymt32 -lrt -lm
++LIBS :=-lloragw -ltinymt32 -lrt -lm
+ 
+ ### general build targets
+ 
+@@ -127,7 +127,8 @@ libloragw.a: $(OBJDIR)/loragw_spi.o \
+ 			 $(OBJDIR)/loragw_gps.o \
+ 			 $(OBJDIR)/loragw_sx1302_timestamp.o \
+ 			 $(OBJDIR)/loragw_sx1302_rx.o \
+-			 $(OBJDIR)/loragw_ad5338r.o
++			 $(OBJDIR)/loragw_ad5338r.o \
++			 $(OBJDIR)/loragw_led.o
+ 	$(AR) rcs $@ $^
+ 
+ ### test programs
+diff --git a/libloragw/inc/loragw_hal.h b/libloragw/inc/loragw_hal.h
+index 6e153a3..c8b6674 100644
+--- a/libloragw/inc/loragw_hal.h
++++ b/libloragw/inc/loragw_hal.h
+@@ -126,7 +126,7 @@ License: Revised BSD License, see LICENSE.TXT file include in the project
+ #define RX_SUSPENDED        3    /* RX is suspended while a TX is ongoing */
+ 
+ /* Maximum size of Tx gain LUT */
+-#define TX_GAIN_LUT_SIZE_MAX 16
++#define TX_GAIN_LUT_SIZE_MAX 32
+ 
+ /* Listen-Before-Talk */
+ #define LGW_LBT_CHANNEL_NB_MAX 16 /* Maximum number of LBT channels */
+diff --git a/libloragw/inc/loragw_i2c.h b/libloragw/inc/loragw_i2c.h
+index a35b772..546dd90 100644
+--- a/libloragw/inc/loragw_i2c.h
++++ b/libloragw/inc/loragw_i2c.h
+@@ -29,8 +29,9 @@ License: Revised BSD License, see LICENSE.TXT file include in the project
+ #define LGW_I2C_SUCCESS     0
+ #define LGW_I2C_ERROR       -1
+ 
+-#define I2C_DEVICE          "/dev/i2c-1"
+-
++#ifndef I2C_DEVICE
++#define I2C_DEVICE          "/dev/i2c-0"
++#endif
+ /* -------------------------------------------------------------------------- */
+ /* --- PUBLIC FUNCTIONS PROTOTYPES ------------------------------------------ */
+ 
+diff --git a/libloragw/inc/loragw_led.h b/libloragw/inc/loragw_led.h
+new file mode 100644
+index 0000000..e2e2c4f
+--- /dev/null
++++ b/libloragw/inc/loragw_led.h
+@@ -0,0 +1,37 @@
++#ifndef _LORAGW_LED_H
++#define _LORAGW_LED_H
++
++/* -------------------------------------------------------------------------- */
++/* --- DEPENDANCIES --------------------------------------------------------- */
++
++#include <stdint.h>        /* C99 types*/
++
++#include "config.h"    /* library configuration options (dynamically generated) */
++
++/* -------------------------------------------------------------------------- */
++/* --- PUBLIC CONSTANTS ----------------------------------------------------- */
++#ifndef LED_NAME
++#define LED_NAME    "green:lora"
++#endif
++
++#ifndef LED_INTERVAL
++#define LED_INTERVAL    "100"
++#endif
++
++/* -------------------------------------------------------------------------- */
++/* --- PUBLIC FUNCTIONS PROTOTYPES ------------------------------------------ */
++/**
++@brief Set led on
++*/
++void loragw_led_on();
++/**
++@brief Set led off
++*/
++void loragw_led_off();
++/**
++@brief Set led onshot
++*/
++void loragw_led_flash();
++
++#endif 
++/* --- EOF ------------------------------------------------------------------ */
+diff --git a/libloragw/inc/loragw_spi.h b/libloragw/inc/loragw_spi.h
+index 88e4530..3d4bd54 100644
+--- a/libloragw/inc/loragw_spi.h
++++ b/libloragw/inc/loragw_spi.h
+@@ -32,7 +32,9 @@ License: Revised BSD License, see LICENSE.TXT file include in the project
+ #define LGW_SPI_SUCCESS     0
+ #define LGW_SPI_ERROR       -1
+ 
++#ifndef SPI_SPEED
+ #define SPI_SPEED       2000000
++#endif
+ 
+ /* -------------------------------------------------------------------------- */
+ /* --- PUBLIC FUNCTIONS PROTOTYPES ------------------------------------------ */
+diff --git a/libloragw/src/loragw_gps.c b/libloragw/src/loragw_gps.c
+index ca9602d..998d632 100644
+--- a/libloragw/src/loragw_gps.c
++++ b/libloragw/src/loragw_gps.c
+@@ -157,6 +157,22 @@ static char nibble_to_hexchar(uint8_t a) {
+     }
+ }
+ 
++/*!
++ * @brief Offset in second between GPS EPOCH and UNIX EPOCH time
++ */
++#define OFFSET_BETWEEN_GPS_EPOCH_AND_UNIX_EPOCH 315964800
++
++/*!
++ * @brief Number of leap seconds as of September 15th 2021
++ */
++#define OFFSET_LEAP_SECONDS 18
++
++static void utc2gps(struct timespec *utc, struct timespec *gps_time)
++{
++    gps_time->tv_nsec = utc->tv_nsec;
++    gps_time->tv_sec  = utc->tv_sec - OFFSET_BETWEEN_GPS_EPOCH_AND_UNIX_EPOCH + OFFSET_LEAP_SECONDS;
++}
++
+ /* ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ */
+ 
+ /*
+@@ -529,26 +545,28 @@ enum gps_msg lgw_parse_nmea(const char *serial_buff, int buff_size) {
+     } else if (match_label(serial_buff, "$G?RMC", 6, '?')) {
+         /*
+         NMEA sentence format: $xxRMC,time,status,lat,NS,long,EW,spd,cog,date,mv,mvEW,posMode*cs<CR><LF>
+-        Valid fix: $GPRMC,083559.34,A,4717.11437,N,00833.91522,E,0.004,77.52,091202,,,A*00
++        Valid fix: $GPRMC,083559.34,A,4717.11437,N,00833.91522,E,0.004,77.52,091202,,,A*00 
++        L76K Valid fix: $GPRMC,083559.34,A,4717.11437,N,00833.91522,E,0.004,77.52,091202,,,A,V*00 
+         No fix: $GPRMC,,V,,,,,,,,,,N*00
+         */
+         memcpy(parser_buf, serial_buff, buff_size);
+         parser_buf[buff_size] = '\0';
+         nb_fields = str_chop(parser_buf, buff_size, ',', str_index, ARRAY_SIZE(str_index));
+-        if (nb_fields != 13) {
++        if (nb_fields < 13) {
+             DEBUG_MSG("Warning: invalid RMC sentence (number of fields)\n");
+             return IGNORED;
+         }
+         /* parse GPS status */
+         gps_mod = *(parser_buf + str_index[12]); /* get first character, no need to bother with sscanf */
+-        if ((gps_mod != 'N') && (gps_mod != 'A') && (gps_mod != 'D')) {
++        DEBUG_MSG("Note: GPS Mode: %c\n", gps_mod);
++        if ((gps_mod != 'N') && (gps_mod != 'A') && (gps_mod != 'D') && (gps_mod) != 'E') {
+             gps_mod = 'N';
+         }
+         /* parse complete time */
+         i = sscanf(parser_buf + str_index[1], "%2hd%2hd%2hd%4f", &gps_hou, &gps_min, &gps_sec, &gps_fra);
+         j = sscanf(parser_buf + str_index[9], "%2hd%2hd%2hd", &gps_day, &gps_mon, &gps_yea);
+         if ((i == 4) && (j == 3)) {
+-            if ((gps_mod == 'A') || (gps_mod == 'D')) {
++            if ((gps_mod == 'A') || (gps_mod == 'D') || (gps_mod) == 'E') {
+                 gps_time_ok = true;
+                 DEBUG_MSG("Note: Valid RMC sentence, GPS locked, date: 20%02d-%02d-%02dT%02d:%02d:%06.3fZ\n", gps_yea, gps_mon, gps_day, gps_hou, gps_min, gps_fra + (float)gps_sec);
+             } else {
+@@ -601,7 +619,7 @@ enum gps_msg lgw_parse_nmea(const char *serial_buff, int buff_size) {
+ int lgw_gps_get(struct timespec *utc, struct timespec *gps_time, struct coord_s *loc, struct coord_s *err) {
+     struct tm x;
+     time_t y;
+-    double intpart, fractpart;
++    //double intpart, fractpart;
+ 
+     if (utc != NULL) {
+         if (!gps_time_ok) {
+@@ -632,13 +650,16 @@ int lgw_gps_get(struct timespec *utc, struct timespec *gps_time, struct coord_s
+             DEBUG_MSG("ERROR: NO VALID TIME TO RETURN\n");
+             return LGW_GPS_ERROR;
+         }
+-        fractpart = modf(((double)gps_iTOW / 1E3) + ((double)gps_fTOW / 1E9), &intpart);
+-        /* Number of seconds since beginning on current GPS week */
+-        gps_time->tv_sec = (time_t)intpart;
+-        /* Number of seconds since GPS epoch 06.Jan.1980 */
+-        gps_time->tv_sec += (time_t)gps_week * 604800; /* day*hours*minutes*secondes: 7*24*60*60; */
+-        /* Fractional part in nanoseconds */
+-        gps_time->tv_nsec = (long)(fractpart * 1E9);
++        if(utc != NULL) {
++            utc2gps(utc, gps_time);
++        }
++        // fractpart = modf(((double)gps_iTOW / 1E3) + ((double)gps_fTOW / 1E9), &intpart);
++        // /* Number of seconds since beginning on current GPS week */
++        // gps_time->tv_sec = (time_t)intpart;
++        // /* Number of seconds since GPS epoch 06.Jan.1980 */
++        // gps_time->tv_sec += (time_t)gps_week * 604800; /* day*hours*minutes*secondes: 7*24*60*60; */
++        // /* Fractional part in nanoseconds */
++        // gps_time->tv_nsec = (long)(fractpart * 1E9);
+     }
+     if (loc != NULL) {
+         if (!gps_pos_ok) {
+diff --git a/libloragw/src/loragw_hal.c b/libloragw/src/loragw_hal.c
+index ffc8ec0..56f0838 100644
+--- a/libloragw/src/loragw_hal.c
++++ b/libloragw/src/loragw_hal.c
+@@ -47,6 +47,7 @@ License: Revised BSD License, see LICENSE.TXT file include in the project
+ #include "loragw_stts751.h"
+ #include "loragw_ad5338r.h"
+ #include "loragw_debug.h"
++#include "loragw_led.h"
+ 
+ /* -------------------------------------------------------------------------- */
+ /* --- DEBUG CONSTANTS ------------------------------------------------------ */
+@@ -297,20 +298,15 @@ static int remove_pkt(struct lgw_pkt_rx_s * p, uint8_t * nb_pkt, uint8_t pkt_ind
+ 
+ /* ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ */
+ 
+-int compare_pkt_tmst(const void *a, const void *b, void *arg)
++int compare_pkt_tmst(const void *a, const void *b)
+ {
+     struct lgw_pkt_rx_s *p = (struct lgw_pkt_rx_s *)a;
+     struct lgw_pkt_rx_s *q = (struct lgw_pkt_rx_s *)b;
+-    int *counter = (int *)arg;
+     int p_count, q_count;
+ 
+     p_count = p->count_us;
+     q_count = q->count_us;
+ 
+-    if (p_count > q_count) {
+-        *counter = *counter + 1;
+-    }
+-
+     return (p_count - q_count);
+ }
+ 
+@@ -323,7 +319,6 @@ static int merge_packets(struct lgw_pkt_rx_s * p, uint8_t * nb_pkt) {
+     int pkt_idx;
+ #endif
+     bool dup_restart = false;
+-    int counter_qsort_swap = 0;
+ 
+     /* Check input parameters */
+     CHECK_NULL(p);
+@@ -417,8 +412,7 @@ static int merge_packets(struct lgw_pkt_rx_s * p, uint8_t * nb_pkt) {
+     }
+ 
+     /* Sort the packet array by ascending counter_us value */
+-    qsort_r(p, cpt, sizeof(p[0]), compare_pkt_tmst, &counter_qsort_swap);
+-    DEBUG_PRINTF("%d elements swapped during sorting...\n", counter_qsort_swap);
++    qsort(p, cpt, sizeof(p[0]), compare_pkt_tmst);
+ 
+     /* --------------------------------------------- */
+     /* ---------- For Debug only - START ----------- */
+@@ -1180,7 +1174,7 @@ int lgw_start(void) {
+ 
+     /* set hal state */
+     CONTEXT_STARTED = true;
+-
++    loragw_led_on();
+     DEBUG_PRINTF(" --- %s\n", "OUT");
+ 
+     return LGW_HAL_SUCCESS;
+@@ -1192,6 +1186,7 @@ int lgw_stop(void) {
+     int i, x, err = LGW_HAL_SUCCESS;
+ 
+     DEBUG_PRINTF(" --- %s\n", "IN");
++    loragw_led_off();
+ 
+     if (CONTEXT_STARTED == false) {
+         DEBUG_MSG("Note: LoRa concentrator was not started...\n");
+@@ -1281,6 +1276,9 @@ int lgw_receive(uint8_t max_pkt, struct lgw_pkt_rx_s *pkt_data) {
+         _meas_time_stop(1, tm, __FUNCTION__);
+         return 0;
+     }
++
++    loragw_led_flash();
++
+     if (nb_pkt_fetched > max_pkt) {
+         nb_pkt_left = nb_pkt_fetched - max_pkt;
+         printf("WARNING: not enough space allocated, fetched %d packet(s), %d will be left in RX buffer\n", nb_pkt_fetched, nb_pkt_left);
+@@ -1343,10 +1341,12 @@ int lgw_send(struct lgw_pkt_tx_s * pkt_data) {
+     struct timeval tm;
+ 
+     DEBUG_PRINTF(" --- %s\n", "IN");
+-
++    
+     /* Record function start time */
+     _meas_time_start(&tm);
+ 
++    loragw_led_flash();
++
+     /* check if the concentrator is running */
+     if (CONTEXT_STARTED == false) {
+         printf("ERROR: CONCENTRATOR IS NOT RUNNING, START IT BEFORE SENDING\n");
+@@ -1417,6 +1417,7 @@ int lgw_send(struct lgw_pkt_tx_s * pkt_data) {
+         err = ad5338r_write(ad_fd, I2C_PORT_DAC_AD5338R, volt_val);
+         if (err != LGW_I2C_SUCCESS) {
+             printf("ERROR: failed to set voltage by ad5338r\n");
++            loragw_led_on();
+             return LGW_HAL_ERROR;
+         }
+         printf("INFO: AD5338R: Set DAC output to 0x%02X 0x%02X\n", (uint8_t)VOLTAGE2HEX_H(2.51), (uint8_t)VOLTAGE2HEX_L(2.51));
+@@ -1427,6 +1428,7 @@ int lgw_send(struct lgw_pkt_tx_s * pkt_data) {
+         err = lgw_lbt_start(&CONTEXT_SX1261, pkt_data);
+         if (err != 0) {
+             printf("ERROR: failed to start LBT\n");
++            loragw_led_on();
+             return LGW_HAL_ERROR;
+         }
+     }
+@@ -1442,7 +1444,7 @@ int lgw_send(struct lgw_pkt_tx_s * pkt_data) {
+                 printf("ERROR: %s: Failed to stop LBT\n", __FUNCTION__);
+             }
+         }
+-
++        loragw_led_on();
+         return LGW_HAL_ERROR;
+     }
+ 
+@@ -1461,6 +1463,7 @@ int lgw_send(struct lgw_pkt_tx_s * pkt_data) {
+             if (err != 0) {
+                 printf("ERROR: %s: Failed to stop LBT\n", __FUNCTION__);
+             }
++            loragw_led_on();
+             return LGW_HAL_ERROR;
+         }
+         if (lbt_tx_allowed == true) {
+@@ -1472,10 +1475,12 @@ int lgw_send(struct lgw_pkt_tx_s * pkt_data) {
+         err = lgw_lbt_stop();
+         if (err != 0) {
+             printf("ERROR: %s: Failed to stop LBT\n", __FUNCTION__);
++            loragw_led_on();
+             return LGW_HAL_ERROR;
+         }
+     }
+ 
++    loragw_led_on();
+     DEBUG_PRINTF(" --- %s\n", "OUT");
+ 
+     if (CONTEXT_SX1261.lbt_conf.enable == true && lbt_tx_allowed == false) {
+@@ -1490,6 +1495,8 @@ int lgw_send(struct lgw_pkt_tx_s * pkt_data) {
+ int lgw_status(uint8_t rf_chain, uint8_t select, uint8_t *code) {
+     DEBUG_PRINTF(" --- %s\n", "IN");
+ 
++    loragw_led_flash();
++
+     /* check input variables */
+     CHECK_NULL(code);
+     if (rf_chain >= LGW_RF_CHAIN_NB) {
+@@ -1528,6 +1535,8 @@ int lgw_abort_tx(uint8_t rf_chain) {
+ 
+     DEBUG_PRINTF(" --- %s\n", "IN");
+ 
++    loragw_led_flash();
++
+     /* check input variables */
+     if (rf_chain >= LGW_RF_CHAIN_NB) {
+         DEBUG_MSG("ERROR: NOT A VALID RF_CHAIN NUMBER\n");
+@@ -1574,9 +1583,11 @@ int lgw_get_instcnt(uint32_t* inst_cnt_us) {
+ 
+ int lgw_get_eui(uint64_t* eui) {
+     DEBUG_PRINTF(" --- %s\n", "IN");
++    
++    loragw_led_flash();
+ 
+     CHECK_NULL(eui);
+-
++    
+     if (sx1302_get_eui(eui) != LGW_REG_SUCCESS) {
+         return LGW_HAL_ERROR;
+     }
+@@ -1593,6 +1604,8 @@ int lgw_get_temperature(float* temperature) {
+ 
+     DEBUG_PRINTF(" --- %s\n", "IN");
+ 
++    loragw_led_flash();
++
+     CHECK_NULL(temperature);
+ 
+     switch (CONTEXT_COM_TYPE) {
+@@ -1623,7 +1636,7 @@ const char* lgw_version_info() {
+ uint32_t lgw_time_on_air(const struct lgw_pkt_tx_s *packet) {
+     double t_fsk;
+     uint32_t toa_ms, toa_us;
+-
++    
+     DEBUG_PRINTF(" --- %s\n", "IN");
+ 
+     if (packet == NULL) {
+diff --git a/libloragw/src/loragw_led.c b/libloragw/src/loragw_led.c
+new file mode 100644
+index 0000000..6c729c1
+--- /dev/null
++++ b/libloragw/src/loragw_led.c
+@@ -0,0 +1,44 @@
++/* -------------------------------------------------------------------------- */
++/* --- DEPENDANCIES --------------------------------------------------------- */
++
++#include <stdio.h>
++#include <stdio.h>
++#include <string.h>
++#include <stdlib.h>
++
++#include "loragw_led.h"
++
++static int loragw_led_set(char *file, char *value)
++{
++	FILE *fp;
++	char path[64];
++	snprintf(path, sizeof(path), "/sys/class/leds/%s/%s", LED_NAME, file);
++
++	fp = fopen(path, "w");
++	if (!fp)
++	{
++		return -1;
++	}
++	fwrite(value, strlen(value), 1, fp);
++	fclose(fp);
++	return 0;
++}
++
++void loragw_led_flash()
++{
++	loragw_led_set("shot", "1");
++}
++
++void loragw_led_on()
++{
++	loragw_led_set("trigger", "oneshot");
++	loragw_led_set("invert", "1");
++	loragw_led_set("delay_off", LED_INTERVAL);
++	loragw_led_set("delay_on", LED_INTERVAL);
++}
++
++void loragw_led_off()
++{
++	loragw_led_set("trigger", "none");
++	loragw_led_set("brightness", "0");
++}
+diff --git a/libloragw/src/loragw_spi.c b/libloragw/src/loragw_spi.c
+index 94231b7..470c120 100644
+--- a/libloragw/src/loragw_spi.c
++++ b/libloragw/src/loragw_spi.c
+@@ -198,47 +198,11 @@ int lgw_spi_w(void *com_target, uint8_t spi_mux_target, uint16_t address, uint8_
+ }
+ 
+ /* ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ */
++int lgw_spi_rb(void *com_target, uint8_t spi_mux_target, uint16_t address, uint8_t *data, uint16_t size);
+ 
+ /* Simple read */
+ int lgw_spi_r(void *com_target, uint8_t spi_mux_target, uint16_t address, uint8_t *data) {
+-    int spi_device;
+-    uint8_t out_buf[5];
+-    uint8_t command_size;
+-    uint8_t in_buf[ARRAY_SIZE(out_buf)];
+-    struct spi_ioc_transfer k;
+-    int a;
+-
+-    /* check input variables */
+-    CHECK_NULL(com_target);
+-    CHECK_NULL(data);
+-
+-    spi_device = *(int *)com_target; /* must check that com_target is not null beforehand */
+-
+-    /* prepare frame to be sent */
+-    out_buf[0] = spi_mux_target;
+-    out_buf[1] = READ_ACCESS | ((address >> 8) & 0x7F);
+-    out_buf[2] =               ((address >> 0) & 0xFF);
+-    out_buf[3] = 0x00;
+-    out_buf[4] = 0x00;
+-    command_size = 5;
+-
+-    /* I/O transaction */
+-    memset(&k, 0, sizeof(k)); /* clear k */
+-    k.tx_buf = (unsigned long) out_buf;
+-    k.rx_buf = (unsigned long) in_buf;
+-    k.len = command_size;
+-    k.cs_change = 0;
+-    a = ioctl(spi_device, SPI_IOC_MESSAGE(1), &k);
+-
+-    /* determine return code */
+-    if (a != (int)k.len) {
+-        DEBUG_MSG("ERROR: SPI READ FAILURE\n");
+-        return LGW_SPI_ERROR;
+-    } else {
+-        DEBUG_MSG("Note: SPI read success\n");
+-        *data = in_buf[command_size - 1];
+-        return LGW_SPI_SUCCESS;
+-    }
++    return lgw_spi_rb(com_target, spi_mux_target, address, data, 1);
+ }
+ 
+ /* ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ */
+diff --git a/libloragw/src/sx1250_spi.c b/libloragw/src/sx1250_spi.c
+index 9323704..40e7675 100644
+--- a/libloragw/src/sx1250_spi.c
++++ b/libloragw/src/sx1250_spi.c
+@@ -100,11 +100,10 @@ int sx1250_spi_w(void *com_target, uint8_t spi_mux_target, sx1250_op_code_t op_c
+ int sx1250_spi_r(void *com_target, uint8_t spi_mux_target, sx1250_op_code_t op_code, uint8_t *data, uint16_t size) {
+     int com_device;
+     int cmd_size = 2; /* header + op_code + NOP */
+-    uint8_t out_buf[cmd_size + size];
+-    uint8_t command_size;
+-    uint8_t in_buf[ARRAY_SIZE(out_buf)];
+-    struct spi_ioc_transfer k;
+-    int a, i;
++    uint8_t out_buf[cmd_size];
++    struct spi_ioc_transfer k[2];
++    int a = 0;
++
+ 
+     /* wait BUSY */
+     wait_ms(WAIT_BUSY_SX1250_MS);
+@@ -118,27 +117,25 @@ int sx1250_spi_r(void *com_target, uint8_t spi_mux_target, sx1250_op_code_t op_c
+     /* prepare frame to be sent */
+     out_buf[0] = spi_mux_target;
+     out_buf[1] = (uint8_t)op_code;
+-    for(i = 0; i < (int)size; i++) {
+-        out_buf[cmd_size + i] = data[i];
+-    }
+-    command_size = cmd_size + size;
+ 
+     /* I/O transaction */
+     memset(&k, 0, sizeof(k)); /* clear k */
+-    k.tx_buf = (unsigned long) out_buf;
+-    k.rx_buf = (unsigned long) in_buf;
+-    k.len = command_size;
+-    k.cs_change = 0;
+-    a = ioctl(com_device, SPI_IOC_MESSAGE(1), &k);
+ 
++    k[0].tx_buf =(unsigned long) out_buf;
++    k[0].len = cmd_size;
++    k[0].cs_change = 0;
++
++    k[1].rx_buf =(unsigned long) data;
++    k[1].len = size;
++    k[1].cs_change = 0;
++
++    a = ioctl(com_device, SPI_IOC_MESSAGE(2), &k);
+     /* determine return code */
+-    if (a != (int)k.len) {
++    if (a != (size+cmd_size)) {
+         DEBUG_MSG("ERROR: SPI READ FAILURE\n");
+         return LGW_SPI_ERROR;
+     } else {
+         DEBUG_MSG("Note: SPI read success\n");
+-        //*data = in_buf[command_size - 1];
+-        memcpy(data, in_buf + cmd_size, size);
+         return LGW_SPI_SUCCESS;
+     }
+ }
+diff --git a/libloragw/src/sx125x_spi.c b/libloragw/src/sx125x_spi.c
+index dfa361c..ae396ac 100644
+--- a/libloragw/src/sx125x_spi.c
++++ b/libloragw/src/sx125x_spi.c
+@@ -61,11 +61,11 @@ License: Revised BSD License, see LICENSE.TXT file include in the project
+ /* Simple read */
+ int sx125x_spi_r(void *com_target, uint8_t spi_mux_target, uint8_t address, uint8_t *data) {
+     int com_device;
+-    uint8_t out_buf[3];
+-    uint8_t command_size;
+-    uint8_t in_buf[ARRAY_SIZE(out_buf)];
+-    struct spi_ioc_transfer k;
+-    int a;
++    int cmd_size = 2; /* header + op_code + NOP */
++    uint8_t out_buf[cmd_size];
++    struct spi_ioc_transfer k[2];
++    int a = 0;
++    uint8_t temp = 0;
+ 
+     /* check input variables */
+     CHECK_NULL(com_target);
+@@ -76,24 +76,25 @@ int sx125x_spi_r(void *com_target, uint8_t spi_mux_target, uint8_t address, uint
+     /* prepare frame to be sent */
+     out_buf[0] = spi_mux_target;
+     out_buf[1] = READ_ACCESS | (address & 0x7F);
+-    out_buf[2] = 0x00;
+-    command_size = 3;
+ 
+     /* I/O transaction */
+     memset(&k, 0, sizeof(k)); /* clear k */
+-    k.tx_buf = (unsigned long) out_buf;
+-    k.rx_buf = (unsigned long) in_buf;
+-    k.len = command_size;
+-    k.cs_change = 0;
+-    a = ioctl(com_device, SPI_IOC_MESSAGE(1), &k);
+ 
++    k[0].tx_buf =(unsigned long) out_buf;
++    k[0].len = cmd_size;
++    k[0].cs_change = 0;
++
++    k[1].rx_buf =(unsigned long) temp;
++    k[1].len = 1;
++    k[1].cs_change = 0;
++
++    a = ioctl(com_device, SPI_IOC_MESSAGE(2), &k);
+     /* determine return code */
+-    if (a != (int)k.len) {
++    if (a != (1+cmd_size)) {
+         DEBUG_MSG("ERROR: SPI READ FAILURE\n");
+         return LGW_SPI_ERROR;
+     } else {
+-        //DEBUG_MSG("Note: SPI read success\n");
+-        *data = in_buf[command_size - 1];
++        *data = temp;
+         return LGW_SPI_SUCCESS;
+     }
+ }
+diff --git a/libloragw/src/sx1261_spi.c b/libloragw/src/sx1261_spi.c
+index d1ddb57..7fbb5e4 100644
+--- a/libloragw/src/sx1261_spi.c
++++ b/libloragw/src/sx1261_spi.c
+@@ -98,12 +98,21 @@ int sx1261_spi_w(void *com_target, sx1261_op_code_t op_code, uint8_t *data, uint
+ 
+ int sx1261_spi_r(void *com_target, sx1261_op_code_t op_code, uint8_t *data, uint16_t size) {
+     int com_device;
+-    int cmd_size = 1; /* op_code */
+-    uint8_t out_buf[cmd_size + size];
+-    uint8_t command_size;
+-    uint8_t in_buf[ARRAY_SIZE(out_buf)];
+-    struct spi_ioc_transfer k;
+-    int a, i;
++    /* 
++     * we need to split one sx1261 read into 2 parts, 
++     * 1st part is opcode + addr(optional), 2nd part is dummy tx but to rx bytes,
++     * most read operation has only opcode as parameter, except ReadRegister and ReadBuffer,
++     * so we do special for these two operations.
++     */
++    int cmd_size = 1;
++    if (op_code == SX1261_READ_REGISTER) {
++        cmd_size = 3;
++    } else if (op_code == SX1261_READ_BUFFER) {
++        cmd_size = 2;
++    }
++    uint8_t out_buf[4];
++    struct spi_ioc_transfer k[2];
++    int a = 0;
+ 
+     /* wait BUSY */
+     wait_ms(WAIT_BUSY_SX1250_MS);
+@@ -115,30 +124,36 @@ int sx1261_spi_r(void *com_target, sx1261_op_code_t op_code, uint8_t *data, uint
+     com_device = *(int *)com_target;
+ 
+     /* prepare frame to be sent */
++    memset(out_buf, 0, 4);
+     out_buf[0] = (uint8_t)op_code;
+-    for(i = 0; i < (int)size; i++) {
+-        out_buf[cmd_size + i] = data[i];
++    if (op_code == SX1261_READ_REGISTER) {
++        out_buf[1] = (uint8_t)*data;
++        out_buf[2] = (uint8_t)*(data + 1);
++    } else if (op_code == SX1261_READ_BUFFER) {
++        out_buf[1] = (uint8_t)*data;
+     }
+-    command_size = cmd_size + size;
+ 
+     /* I/O transaction */
+     memset(&k, 0, sizeof(k)); /* clear k */
+-    k.tx_buf = (unsigned long) out_buf;
+-    k.rx_buf = (unsigned long) in_buf;
+-    k.len = command_size;
+-    k.cs_change = 0;
+-    a = ioctl(com_device, SPI_IOC_MESSAGE(1), &k);
+ 
++    k[0].tx_buf =(unsigned long) out_buf;
++    k[0].len = cmd_size;
++    k[0].cs_change = 0;
++
++    k[1].rx_buf =(unsigned long) (data + cmd_size - 1);
++    k[1].len = size - cmd_size + 1;
++    k[1].cs_change = 0;
++
++    a = ioctl(com_device, SPI_IOC_MESSAGE(2), &k);
+     /* determine return code */
+-    if (a != (int)k.len) {
++    if (a != (size + 1)) {
+         DEBUG_MSG("ERROR: SPI READ FAILURE\n");
+         return LGW_SPI_ERROR;
+     } else {
+         DEBUG_MSG("Note: SPI read success\n");
+-        //*data = in_buf[command_size - 1];
+-        memcpy(data, in_buf + cmd_size, size);
+         return LGW_SPI_SUCCESS;
+     }
++
+ }
+ 
+ /* --- EOF ------------------------------------------------------------------ */
+diff --git a/libloragw/tst/test_loragw_com_sx1261.c b/libloragw/tst/test_loragw_com_sx1261.c
+index ca8b971..6cc96b4 100644
+--- a/libloragw/tst/test_loragw_com_sx1261.c
++++ b/libloragw/tst/test_loragw_com_sx1261.c
+@@ -79,9 +79,11 @@ int main(int argc, char ** argv)
+     const char com_path_default[] = COM_PATH_DEFAULT;
+     const char * com_path = com_path_default;
+     lgw_com_type_t com_type = COM_TYPE_DEFAULT;
++    const char sx1261_path_default[] = SX1261_PATH_DEFAULT;
++    const char * sx1261_path = sx1261_path_default;
+ 
+     /* Parse command line options */
+-    while ((i = getopt(argc, argv, "hd:u")) != -1) {
++    while ((i = getopt(argc, argv, "hd:D:u")) != -1) {
+         switch (i) {
+             case 'h':
+                 usage();
+@@ -94,6 +96,12 @@ int main(int argc, char ** argv)
+                 }
+                 break;
+ 
++            case 'D':
++                if (optarg != NULL) {
++                    sx1261_path = optarg;
++                }
++                break;
++
+             case 'u':
+                 com_type = LGW_COM_USB;
+                 break;
+@@ -122,6 +130,8 @@ int main(int argc, char ** argv)
+         }
+     }
+ 
++    printf("sx1302 spi: %s, sx126x spi: %s\n", com_path, sx1261_path);
++
+     /* Connect to the concentrator board */
+     x = lgw_connect(com_type, com_path);
+     if (x != LGW_REG_SUCCESS) {
+@@ -130,7 +140,7 @@ int main(int argc, char ** argv)
+     }
+ 
+     /* Connect to the sx1261 radio */
+-    x = sx1261_connect(com_type, SX1261_PATH_DEFAULT);
++    x = sx1261_connect(com_type, sx1261_path);
+     if (x != LGW_REG_SUCCESS) {
+         printf("ERROR: Failed to connect to the sx1261 using COM %s\n", com_path);
+         return EXIT_FAILURE;
+@@ -234,6 +244,8 @@ static void usage(void) {
+     printf(" -h            print this help\n");
+     printf(" -d <path>     path to access the COM device\n");
+     printf("               => default path: " COM_PATH_DEFAULT "\n");
++    printf(" -D [path]     Path to the SX1261 SPI interface (not used for USB)\n");
++    printf("               => default path: " SX1261_PATH_DEFAULT "\n");
+     printf(" -u            set COM type as USB (default is SPI)\n");
+ }
+ 
+diff --git a/libloragw/tst/test_loragw_gps.c b/libloragw/tst/test_loragw_gps.c
+index 5ce6333..8962fa3 100644
+--- a/libloragw/tst/test_loragw_gps.c
++++ b/libloragw/tst/test_loragw_gps.c
+@@ -45,6 +45,7 @@ License: Revised BSD License, see LICENSE.TXT file include in the project
+ 
+ #define COM_TYPE_DEFAULT LGW_COM_SPI
+ #define COM_PATH_DEFAULT "/dev/spidev0.0"
++#define UART_PATH_DEFAULT "/dev/ttyS0"
+ 
+ /* -------------------------------------------------------------------------- */
+ /* --- PRIVATE VARIABLES ---------------------------------------------------- */
+@@ -71,6 +72,8 @@ void usage(void) {
+     printf(" -u        set COM type as USB (default is SPI)\n");
+     printf(" -d <path> COM path to be used to connect the concentrator\n");
+     printf("            => default path (SPI): " COM_PATH_DEFAULT "\n");
++    printf(" -D [path] UART path to the GPS\n");
++    printf("            => default path: " UART_PATH_DEFAULT "\n");
+     printf(" -k <uint> Concentrator clock source (Radio A or Radio B) [0..1]\n");
+     printf(" -r <uint> Radio type (1255, 1257, 1250)\n");
+ }
+@@ -177,6 +180,8 @@ int main(int argc, char **argv)
+     const char com_path_default[] = COM_PATH_DEFAULT;
+     const char * com_path = com_path_default;
+     lgw_com_type_t com_type = COM_TYPE_DEFAULT;
++    const char uart_path_default[] = UART_PATH_DEFAULT;
++    const char * uart_path = uart_path_default;
+ 
+     struct sigaction sigact; /* SIGQUIT&SIGINT&SIGTERM signal handling */
+ 
+@@ -198,7 +203,7 @@ int main(int argc, char **argv)
+     enum gps_msg latest_msg; /* keep track of latest NMEA/UBX message parsed */
+ 
+     /* parse command line options */
+-    while ((i = getopt (argc, argv, "hk:r:d:u")) != -1) {
++    while ((i = getopt (argc, argv, "hk:r:d:D:u")) != -1) {
+         switch (i) {
+             case 'h':
+                 usage();
+@@ -209,6 +214,11 @@ int main(int argc, char **argv)
+                     com_path = optarg;
+                 }
+                 break;
++            case 'D':
++                if (optarg != NULL) {
++                    uart_path = optarg;
++                }
++                break;
+             case 'u':
+                 com_type = LGW_COM_USB;
+                 break;
+@@ -268,7 +278,7 @@ int main(int argc, char **argv)
+     }
+ 
+     /* Open and configure GPS */
+-    i = lgw_gps_enable("/dev/ttyS0", "ubx7", 0, &gps_tty_dev);
++    i = lgw_gps_enable(uart_path, "ubx7", 0, &gps_tty_dev);
+     if (i != LGW_GPS_SUCCESS) {
+         printf("ERROR: Failed to enable GPS\n");
+         exit(EXIT_FAILURE);
+diff --git a/libloragw/tst/test_loragw_i2c.c b/libloragw/tst/test_loragw_i2c.c
+index e6e54af..289784d 100644
+--- a/libloragw/tst/test_loragw_i2c.c
++++ b/libloragw/tst/test_loragw_i2c.c
+@@ -81,6 +81,8 @@ int main(int argc, char ** argv)
+     uint8_t high_byte, low_byte;
+     int8_t h;
+     float temperature;
++    const char i2c_path_default[] = I2C_DEVICE;
++    const char * i2c_path = i2c_path_default;
+ 
+     /* Parse command line options */
+     while ((i = getopt(argc, argv, "hd:")) != -1) {
+@@ -92,7 +94,7 @@ int main(int argc, char ** argv)
+ 
+             case 'd':
+                 if (optarg != NULL) {
+-                    /* TODO */
++                    i2c_path = optarg;
+                 }
+                 break;
+ 
+@@ -114,7 +116,7 @@ int main(int argc, char ** argv)
+     printf( "+++ Start of I2C test program +++\n" );
+ 
+     /* Open I2C port expander */
+-    err = i2c_linuxdev_open( I2C_DEVICE, I2C_PORT_STTS751, &i2c_dev );
++    err = i2c_linuxdev_open( i2c_path, I2C_PORT_STTS751, &i2c_dev );
+     if ( (err != 0) || (i2c_dev <= 0) )
+     {
+         printf( "ERROR: failed to open I2C device %s (err=%i)\n", I2C_DEVICE, err );
+diff --git a/packet_forwarder/src/jitqueue.c b/packet_forwarder/src/jitqueue.c
+index 22ec701..c1db6d6 100644
+--- a/packet_forwarder/src/jitqueue.c
++++ b/packet_forwarder/src/jitqueue.c
+@@ -88,32 +88,26 @@ void jit_queue_init(struct jit_queue_s *queue) {
+     pthread_mutex_unlock(&mx_jit_queue);
+ }
+ 
+-int compare(const void *a, const void *b, void *arg)
++int compare(const void *a, const void *b)
+ {
+     struct jit_node_s *p = (struct jit_node_s *)a;
+     struct jit_node_s *q = (struct jit_node_s *)b;
+-    int *counter = (int *)arg;
+     int p_count, q_count;
+ 
+     p_count = p->pkt.count_us;
+     q_count = q->pkt.count_us;
+ 
+-    if (p_count > q_count)
+-        *counter = *counter + 1;
+-
+     return p_count - q_count;
+ }
+ 
+ void jit_sort_queue(struct jit_queue_s *queue) {
+-    int counter = 0;
+ 
+     if (queue->num_pkt == 0) {
+         return;
+     }
+ 
+     MSG_DEBUG(DEBUG_JIT, "sorting queue in ascending order packet timestamp - queue size:%u\n", queue->num_pkt);
+-    qsort_r(queue->nodes, queue->num_pkt, sizeof(queue->nodes[0]), compare, &counter);
+-    MSG_DEBUG(DEBUG_JIT, "sorting queue done - swapped:%d\n", counter);
++    qsort(queue->nodes, queue->num_pkt, sizeof(queue->nodes[0]), compare);
+ }
+ 
+ bool jit_collision_test(uint32_t p1_count_us, uint32_t p1_pre_delay, uint32_t p1_post_delay, uint32_t p2_count_us, uint32_t p2_pre_delay, uint32_t p2_post_delay) {
+diff --git a/packet_forwarder/src/lora_pkt_fwd.c b/packet_forwarder/src/lora_pkt_fwd.c
+index 53661de..a2dd818 100644
+--- a/packet_forwarder/src/lora_pkt_fwd.c
++++ b/packet_forwarder/src/lora_pkt_fwd.c
+@@ -269,6 +269,13 @@ static spectral_scan_t spectral_scan_params = {
+     .pace_s = 10
+ };
+ 
++/* Added by Seeed */
++static pthread_mutex_t mx_sock_up = PTHREAD_MUTEX_INITIALIZER;
++static pthread_mutex_t mx_sock_down = PTHREAD_MUTEX_INITIALIZER;
++static volatile bool sock_up_ready_sig = false;
++static volatile bool sock_down_ready_sig = false;
++/* End Seeed */
++
+ /* -------------------------------------------------------------------------- */
+ /* --- PRIVATE FUNCTIONS DECLARATION ---------------------------------------- */
+ 
+@@ -299,6 +306,7 @@ void thread_jit(void);
+ void thread_gps(void);
+ void thread_valid(void);
+ void thread_spectral_scan(void);
++void thread_socket_manager(void);
+ 
+ /* -------------------------------------------------------------------------- */
+ /* --- PRIVATE FUNCTIONS DEFINITION ----------------------------------------- */
+@@ -1311,6 +1319,7 @@ static int send_tx_ack(uint8_t token_h, uint8_t token_l, enum jit_error_e error,
+     uint8_t buff_ack[ACK_BUFF_SIZE]; /* buffer to give feedback to server */
+     int buff_index;
+     int j;
++    int ret;
+ 
+     /* reset buffer */
+     memset(&buff_ack, 0, sizeof buff_ack);
+@@ -1415,7 +1424,29 @@ static int send_tx_ack(uint8_t token_h, uint8_t token_l, enum jit_error_e error,
+     buff_ack[buff_index] = 0; /* add string terminator, for safety */
+ 
+     /* send datagram to server */
+-    return send(sock_down, (void *)buff_ack, buff_index, 0);
++    pthread_mutex_lock(&mx_sock_down);
++    ret = send(sock_down, (void *)buff_ack, buff_index, 0);
++    pthread_mutex_unlock(&mx_sock_down);
++    return ret;
++}
++
++static void server_connect_state(uint8_t state)
++{
++    static  uint8_t last_state = 0XFF;
++    
++    if( last_state != state ) {
++        char network_info[128] = {0};
++        snprintf(network_info, sizeof(network_info), "ubus -S call sensecap  lora_network_connect '{\"lora_pkt_fwd\":%d}'", state);
++        system(network_info);
++        last_state = state;
++    }
++}
++
++static void lora_module_state(uint8_t state)
++{
++    char info[128] = {0};
++    snprintf(info, sizeof(info), "ubus -S call sensecap lora_module '{\"state\":%d}'", state);
++    system(info);
+ }
+ 
+ /* -------------------------------------------------------------------------- */
+@@ -1439,13 +1470,14 @@ int main(int argc, char ** argv)
+     pthread_t thrid_valid;
+     pthread_t thrid_jit;
+     pthread_t thrid_ss;
++    pthread_t thrid_socket_manager;
+ 
+-    /* network socket creation */
+-    struct addrinfo hints;
+-    struct addrinfo *result; /* store result of getaddrinfo */
+-    struct addrinfo *q; /* pointer to move into *result data */
+-    char host_name[64];
+-    char port_name[64];
++    // /* network socket creation */
++    // struct addrinfo hints;
++    // struct addrinfo *result; /* store result of getaddrinfo */
++    // struct addrinfo *q; /* pointer to move into *result data */
++    // char host_name[64];
++    // char port_name[64];
+ 
+     /* variables to get local copies of measurements */
+     uint32_t cp_nb_rx_rcv;
+@@ -1513,6 +1545,8 @@ int main(int argc, char ** argv)
+         }
+     }
+ 
++    server_connect_state(0); 
++
+     /* display version informations */
+     MSG("*** Packet Forwarder ***\nVersion: " VERSION_STRING "\n");
+     MSG("*** SX1302 HAL library version info ***\n%s\n***\n", lgw_version_info());
+@@ -1570,78 +1604,78 @@ int main(int argc, char ** argv)
+     net_mac_h = htonl((uint32_t)(0xFFFFFFFF & (lgwm>>32)));
+     net_mac_l = htonl((uint32_t)(0xFFFFFFFF &  lgwm  ));
+ 
+-    /* prepare hints to open network sockets */
+-    memset(&hints, 0, sizeof hints);
+-    hints.ai_family = AF_INET; /* WA: Forcing IPv4 as AF_UNSPEC makes connection on localhost to fail */
+-    hints.ai_socktype = SOCK_DGRAM;
+-
+-    /* look for server address w/ upstream port */
+-    i = getaddrinfo(serv_addr, serv_port_up, &hints, &result);
+-    if (i != 0) {
+-        MSG("ERROR: [up] getaddrinfo on address %s (PORT %s) returned %s\n", serv_addr, serv_port_up, gai_strerror(i));
+-        exit(EXIT_FAILURE);
+-    }
+-
+-    /* try to open socket for upstream traffic */
+-    for (q=result; q!=NULL; q=q->ai_next) {
+-        sock_up = socket(q->ai_family, q->ai_socktype,q->ai_protocol);
+-        if (sock_up == -1) continue; /* try next field */
+-        else break; /* success, get out of loop */
+-    }
+-    if (q == NULL) {
+-        MSG("ERROR: [up] failed to open socket to any of server %s addresses (port %s)\n", serv_addr, serv_port_up);
+-        i = 1;
+-        for (q=result; q!=NULL; q=q->ai_next) {
+-            getnameinfo(q->ai_addr, q->ai_addrlen, host_name, sizeof host_name, port_name, sizeof port_name, NI_NUMERICHOST);
+-            MSG("INFO: [up] result %i host:%s service:%s\n", i, host_name, port_name);
+-            ++i;
+-        }
+-        exit(EXIT_FAILURE);
+-    }
+-
+-    /* connect so we can send/receive packet with the server only */
+-    i = connect(sock_up, q->ai_addr, q->ai_addrlen);
+-    if (i != 0) {
+-        MSG("ERROR: [up] connect returned %s\n", strerror(errno));
+-        exit(EXIT_FAILURE);
+-    }
+-    freeaddrinfo(result);
+-
+-    /* look for server address w/ downstream port */
+-    i = getaddrinfo(serv_addr, serv_port_down, &hints, &result);
+-    if (i != 0) {
+-        MSG("ERROR: [down] getaddrinfo on address %s (port %s) returned %s\n", serv_addr, serv_port_down, gai_strerror(i));
+-        exit(EXIT_FAILURE);
+-    }
+-
+-    /* try to open socket for downstream traffic */
+-    for (q=result; q!=NULL; q=q->ai_next) {
+-        sock_down = socket(q->ai_family, q->ai_socktype,q->ai_protocol);
+-        if (sock_down == -1) continue; /* try next field */
+-        else break; /* success, get out of loop */
+-    }
+-    if (q == NULL) {
+-        MSG("ERROR: [down] failed to open socket to any of server %s addresses (port %s)\n", serv_addr, serv_port_down);
+-        i = 1;
+-        for (q=result; q!=NULL; q=q->ai_next) {
+-            getnameinfo(q->ai_addr, q->ai_addrlen, host_name, sizeof host_name, port_name, sizeof port_name, NI_NUMERICHOST);
+-            MSG("INFO: [down] result %i host:%s service:%s\n", i, host_name, port_name);
+-            ++i;
+-        }
+-        exit(EXIT_FAILURE);
+-    }
+-
+-    /* connect so we can send/receive packet with the server only */
+-    i = connect(sock_down, q->ai_addr, q->ai_addrlen);
+-    if (i != 0) {
+-        MSG("ERROR: [down] connect returned %s\n", strerror(errno));
+-        exit(EXIT_FAILURE);
+-    }
+-    freeaddrinfo(result);
+-
++    // /* prepare hints to open network sockets */
++    // memset(&hints, 0, sizeof hints);
++    // hints.ai_family = AF_INET; /* WA: Forcing IPv4 as AF_UNSPEC makes connection on localhost to fail */
++    // hints.ai_socktype = SOCK_DGRAM;
++
++    // /* look for server address w/ upstream port */
++    // i = getaddrinfo(serv_addr, serv_port_up, &hints, &result);
++    // if (i != 0) {
++    //     MSG("ERROR: [up] getaddrinfo on address %s (PORT %s) returned %s\n", serv_addr, serv_port_up, gai_strerror(i));
++    //     exit(EXIT_FAILURE);
++    // }
++
++    // /* try to open socket for upstream traffic */
++    // for (q=result; q!=NULL; q=q->ai_next) {
++    //     sock_up = socket(q->ai_family, q->ai_socktype,q->ai_protocol);
++    //     if (sock_up == -1) continue; /* try next field */
++    //     else break; /* success, get out of loop */
++    // }
++    // if (q == NULL) {
++    //     MSG("ERROR: [up] failed to open socket to any of server %s addresses (port %s)\n", serv_addr, serv_port_up);
++    //     i = 1;
++    //     for (q=result; q!=NULL; q=q->ai_next) {
++    //         getnameinfo(q->ai_addr, q->ai_addrlen, host_name, sizeof host_name, port_name, sizeof port_name, NI_NUMERICHOST);
++    //         MSG("INFO: [up] result %i host:%s service:%s\n", i, host_name, port_name);
++    //         ++i;
++    //     }
++    //     exit(EXIT_FAILURE);
++    // }
++
++    // /* connect so we can send/receive packet with the server only */
++    // i = connect(sock_up, q->ai_addr, q->ai_addrlen);
++    // if (i != 0) {
++    //     MSG("ERROR: [up] connect returned %s\n", strerror(errno));
++    //     exit(EXIT_FAILURE);
++    // }
++    // freeaddrinfo(result);
++
++    // /* look for server address w/ downstream port */
++    // i = getaddrinfo(serv_addr, serv_port_down, &hints, &result);
++    // if (i != 0) {
++    //     MSG("ERROR: [down] getaddrinfo on address %s (port %s) returned %s\n", serv_addr, serv_port_down, gai_strerror(i));
++    //     exit(EXIT_FAILURE);
++    // }
++
++    // /* try to open socket for downstream traffic */
++    // for (q=result; q!=NULL; q=q->ai_next) {
++    //     sock_down = socket(q->ai_family, q->ai_socktype,q->ai_protocol);
++    //     if (sock_down == -1) continue; /* try next field */
++    //     else break; /* success, get out of loop */
++    // }
++    // if (q == NULL) {
++    //     MSG("ERROR: [down] failed to open socket to any of server %s addresses (port %s)\n", serv_addr, serv_port_down);
++    //     i = 1;
++    //     for (q=result; q!=NULL; q=q->ai_next) {
++    //         getnameinfo(q->ai_addr, q->ai_addrlen, host_name, sizeof host_name, port_name, sizeof port_name, NI_NUMERICHOST);
++    //         MSG("INFO: [down] result %i host:%s service:%s\n", i, host_name, port_name);
++    //         ++i;
++    //     }
++    //     exit(EXIT_FAILURE);
++    // }
++
++    // /* connect so we can send/receive packet with the server only */
++    // i = connect(sock_down, q->ai_addr, q->ai_addrlen);
++    // if (i != 0) {
++    //     MSG("ERROR: [down] connect returned %s\n", strerror(errno));
++    //     exit(EXIT_FAILURE);
++    // }
++    // freeaddrinfo(result);
++    
+     if (com_type == LGW_COM_SPI) {
+         /* Board reset */
+-        if (system("./reset_lgw.sh start") != 0) {
++        if (system("/usr/bin/lora/reset_lgw.sh start") != 0) {
+             printf("ERROR: failed to reset SX1302, check your reset_lgw.sh script\n");
+             exit(EXIT_FAILURE);
+         }
+@@ -1656,8 +1690,10 @@ int main(int argc, char ** argv)
+     /* starting the concentrator */
+     i = lgw_start();
+     if (i == LGW_HAL_SUCCESS) {
++        lora_module_state(1);
+         MSG("INFO: [main] concentrator started, packet can now be received\n");
+     } else {
++        lora_module_state(0);
+         MSG("ERROR: [main] failed to start the concentrator\n");
+         exit(EXIT_FAILURE);
+     }
+@@ -1686,6 +1722,11 @@ int main(int argc, char ** argv)
+         MSG("ERROR: [main] impossible to create JIT thread\n");
+         exit(EXIT_FAILURE);
+     }
++    i = pthread_create( &thrid_socket_manager, NULL, (void * (*)(void *))thread_socket_manager, NULL);
++    if (i != 0) {
++        MSG("ERROR: [main] impossible to create socket manager thread\n");
++        exit(EXIT_FAILURE);
++    }
+ 
+     /* spawn thread for background spectral scan */
+     if (spectral_scan_params.enable == true) {
+@@ -1863,6 +1904,9 @@ int main(int argc, char ** argv)
+             }
+             if (coord_ok == true) {
+                 printf("# GPS coordinates: latitude %.5f, longitude %.5f, altitude %i m\n", cp_gps_coord.lat, cp_gps_coord.lon, cp_gps_coord.alt);
++                char gps_info[256] = {0};
++                snprintf(gps_info, sizeof(gps_info), "ubus -S call sensecap gps '{\"longitude\":\"%0.5f\",\"latitude\":\"%0.5f\",\"state\":1,\"altitude\":\"%i\", \"gps_time\":%li}'", meas_gps_coord.lon, meas_gps_coord.lat, meas_gps_coord.alt, time_reference_gps.utc.tv_sec);
++                system(gps_info);
+             } else {
+                 printf("# no valid GPS coordinates available yet\n");
+             }
+@@ -1884,11 +1928,16 @@ int main(int argc, char ** argv)
+         /* generate a JSON report (will be sent to server by upstream thread) */
+         pthread_mutex_lock(&mx_stat_rep);
+         if (((gps_enabled == true) && (coord_ok == true)) || (gps_fake_enable == true)) {
+-            snprintf(status_report, STATUS_SIZE, "\"stat\":{\"time\":\"%s\",\"lati\":%.5f,\"long\":%.5f,\"alti\":%i,\"rxnb\":%u,\"rxok\":%u,\"rxfw\":%u,\"ackr\":%.1f,\"dwnb\":%u,\"txnb\":%u,\"temp\":%.1f}", stat_timestamp, cp_gps_coord.lat, cp_gps_coord.lon, cp_gps_coord.alt, cp_nb_rx_rcv, cp_nb_rx_ok, cp_up_pkt_fwd, 100.0 * up_ack_ratio, cp_dw_dgram_rcv, cp_nb_tx_ok, temperature);
++            snprintf(status_report, STATUS_SIZE, "\"stat\":{\"time\":\"%s\",\"lati\":%.5f,\"long\":%.5f,\"alti\":%i,\"rxnb\":%u,\"rxok\":%u,\"rxfw\":%u,\"ackr\":%.1f,\"dwnb\":%u,\"txnb\":%u,\"temp\":%d}", stat_timestamp, cp_gps_coord.lat, cp_gps_coord.lon, cp_gps_coord.alt, cp_nb_rx_rcv, cp_nb_rx_ok, cp_up_pkt_fwd, 100.0 * up_ack_ratio, cp_dw_dgram_rcv, cp_nb_tx_ok, (int)temperature);
+         } else {
+-            snprintf(status_report, STATUS_SIZE, "\"stat\":{\"time\":\"%s\",\"rxnb\":%u,\"rxok\":%u,\"rxfw\":%u,\"ackr\":%.1f,\"dwnb\":%u,\"txnb\":%u,\"temp\":%.1f}", stat_timestamp, cp_nb_rx_rcv, cp_nb_rx_ok, cp_up_pkt_fwd, 100.0 * up_ack_ratio, cp_dw_dgram_rcv, cp_nb_tx_ok, temperature);
++            snprintf(status_report, STATUS_SIZE, "\"stat\":{\"time\":\"%s\",\"rxnb\":%u,\"rxok\":%u,\"rxfw\":%u,\"ackr\":%.1f,\"dwnb\":%u,\"txnb\":%u,\"temp\":%d}", stat_timestamp, cp_nb_rx_rcv, cp_nb_rx_ok, cp_up_pkt_fwd, 100.0 * up_ack_ratio, cp_dw_dgram_rcv, cp_nb_tx_ok, (int)temperature);
+         }
+         report_ready = true;
++
++        char statistics[256] = {0};
++        snprintf(statistics, sizeof(statistics), "ubus -S call sensecap lora '{\"rx_sum\":%u,\"tx_sum\":%u,\"temperature\":\"%.1f\", \"report_time\":%lu, \"state\":1}'", cp_nb_rx_rcv, (cp_nb_tx_ok+cp_nb_tx_fail), temperature, t);
++        system(statistics);
++
+         pthread_mutex_unlock(&mx_stat_rep);
+     }
+ 
+@@ -1939,12 +1988,12 @@ int main(int argc, char ** argv)
+ 
+     if (com_type == LGW_COM_SPI) {
+         /* Board reset */
+-        if (system("./reset_lgw.sh stop") != 0) {
++        if (system("/usr/bin/lora/reset_lgw.sh stop") != 0) {
+             printf("ERROR: failed to reset SX1302, check your reset_lgw.sh script\n");
+             exit(EXIT_FAILURE);
+         }
+     }
+-
++    server_connect_state(0); 
+     MSG("INFO: Exiting packet forwarder program\n");
+     exit(EXIT_SUCCESS);
+ }
+@@ -1993,19 +2042,13 @@ void thread_up(void) {
+     uint32_t mote_addr = 0;
+     uint16_t mote_fcnt = 0;
+ 
+-    /* set upstream socket RX timeout */
+-    i = setsockopt(sock_up, SOL_SOCKET, SO_RCVTIMEO, (void *)&push_timeout_half, sizeof push_timeout_half);
+-    if (i != 0) {
+-        MSG("ERROR: [up] setsockopt returned %s\n", strerror(errno));
+-        exit(EXIT_FAILURE);
+-    }
+-
+     /* pre-fill the data buffer with fixed fields */
+     buff_up[0] = PROTOCOL_VERSION;
+     buff_up[3] = PKT_PUSH_DATA;
+     *(uint32_t *)(buff_up + 4) = net_mac_h;
+     *(uint32_t *)(buff_up + 8) = net_mac_l;
+ 
++    int send_status;
+     while (!exit_sig && !quit_sig) {
+ 
+         /* fetch packets */
+@@ -2453,8 +2496,23 @@ void thread_up(void) {
+ 
+         printf("\nJSON up: %s\n", (char *)(buff_up + 12)); /* DEBUG: display JSON payload */
+ 
++        if (!sock_up_ready_sig) {
++            MSG("WARNING: [up] socket not ready\n");
++            wait_ms(FETCH_SLEEP_MS);
++            continue;
++        }
++
+         /* send datagram to server */
+-        send(sock_up, (void *)buff_up, buff_index, 0);
++        pthread_mutex_lock(&mx_sock_up);
++        send_status = send(sock_up, (void *)buff_up, buff_index, 0);
++        pthread_mutex_unlock(&mx_sock_up);
++        if (send_status < 0){
++            MSG("ERROR: [up] JSON up socket send error\n");
++            sock_up_ready_sig = false;
++            wait_ms(FETCH_SLEEP_MS);
++            continue;
++        }
++
+         clock_gettime(CLOCK_MONOTONIC, &send_time);
+         pthread_mutex_lock(&mx_meas_up);
+         meas_up_dgram_sent += 1;
+@@ -2462,12 +2520,16 @@ void thread_up(void) {
+ 
+         /* wait for acknowledge (in 2 times, to catch extra packets) */
+         for (i=0; i<2; ++i) {
++            pthread_mutex_lock(&mx_sock_up);
+             j = recv(sock_up, (void *)buff_ack, sizeof buff_ack, 0);
++            pthread_mutex_unlock(&mx_sock_up);
+             clock_gettime(CLOCK_MONOTONIC, &recv_time);
+             if (j == -1) {
+                 if (errno == EAGAIN) { /* timeout */
+                     continue;
+                 } else { /* server connection error */
++                    MSG("ERROR: [up] socket recv error: %d\n",errno);
++                    sock_up_ready_sig = false;
+                     break;
+                 }
+             } else if ((j < 4) || (buff_ack[0] != PROTOCOL_VERSION) || (buff_ack[3] != PKT_PUSH_ACK)) {
+@@ -2590,13 +2652,8 @@ void thread_down(void) {
+     enum jit_error_e warning_result = JIT_ERROR_OK;
+     int32_t warning_value = 0;
+     uint8_t tx_lut_idx = 0;
+-
+-    /* set downstream socket RX timeout */
+-    i = setsockopt(sock_down, SOL_SOCKET, SO_RCVTIMEO, (void *)&pull_timeout, sizeof pull_timeout);
+-    if (i != 0) {
+-        MSG("ERROR: [down] setsockopt returned %s\n", strerror(errno));
+-        exit(EXIT_FAILURE);
+-    }
++    
++    int send_status;
+ 
+     /* pre-fill the pull request buffer with fixed fields */
+     buff_req[0] = PROTOCOL_VERSION;
+@@ -2706,11 +2763,20 @@ void thread_down(void) {
+ 
+     while (!exit_sig && !quit_sig) {
+ 
++        if (!sock_down_ready_sig) {
++            wait_ms(100);
++            continue;
++        }
++
+         /* auto-quit if the threshold is crossed */
+         if ((autoquit_threshold > 0) && (autoquit_cnt >= autoquit_threshold)) {
+-            exit_sig = true;
++            //exit_sig = true;
+             MSG("INFO: [down] the last %u PULL_DATA were not ACKed, exiting application\n", autoquit_threshold);
+-            break;
++            sock_down_ready_sig = false;
++            autoquit_cnt = 0;
++            continue;
++        } else if ((autoquit_threshold > 0) && (autoquit_cnt > 0)) {
++            MSG("DEBUG: [down] autoquit_cnt = %u \n", autoquit_cnt);
+         }
+ 
+         /* generate random token for request */
+@@ -2720,7 +2786,15 @@ void thread_down(void) {
+         buff_req[2] = token_l;
+ 
+         /* send PULL request and record time */
+-        send(sock_down, (void *)buff_req, sizeof buff_req, 0);
++        pthread_mutex_lock(&mx_sock_down);
++        send_status = send(sock_down, (void *)buff_req, sizeof buff_req, 0);
++        pthread_mutex_unlock(&mx_sock_down);
++        if(send_status < 0){
++            MSG("ERROR: [down] PULL_DATA socket send error\n");
++            sock_down_ready_sig = false;
++            continue;
++        }
++
+         clock_gettime(CLOCK_MONOTONIC, &send_time);
+         pthread_mutex_lock(&mx_meas_dw);
+         meas_dw_pull_sent += 1;
+@@ -2733,7 +2807,9 @@ void thread_down(void) {
+         while (((int)difftimespec(recv_time, send_time) < keepalive_time) && !exit_sig && !quit_sig) {
+ 
+             /* try to receive a datagram */
++            pthread_mutex_lock(&mx_sock_down);
+             msg_len = recv(sock_down, (void *)buff_down, (sizeof buff_down)-1, 0);
++            pthread_mutex_unlock(&mx_sock_down);
+             clock_gettime(CLOCK_MONOTONIC, &recv_time);
+ 
+             /* Pre-allocate beacon slots in JiT queue, to check downlink collisions */
+@@ -3345,7 +3421,7 @@ static void gps_process_sync(void) {
+ 
+     /* get GPS time for synchronization */
+     if (i != LGW_GPS_SUCCESS) {
+-        MSG("WARNING: [gps] could not get GPS time from GPS\n");
++        //MSG("WARNING: [gps] could not get GPS time from GPS\n");
+         return;
+     }
+ 
+@@ -3394,6 +3470,10 @@ void thread_gps(void) {
+     /* variables for PPM pulse GPS synchronization */
+     enum gps_msg latest_msg; /* keep track of latest NMEA message parsed */
+ 
++    /* output less msg */
++    MSG("GPS config: Only GGA and RMC information ouput!\n");
++    write(gps_tty_fd, "$PCAS03,1,0,0,0,1,0,0,0,0,0,,,0,0*02\r\n", strlen("$PCAS03,1,0,0,0,1,0,0,0,0,0,,,0,0*02\r\n"));
++
+     /* initialize some variables before loop */
+     memset(serial_buff, 0, sizeof serial_buff);
+ 
+@@ -3415,10 +3495,8 @@ void thread_gps(void) {
+          *******************************************/
+         while (rd_idx < wr_idx) {
+             size_t frame_size = 0;
+-
+             /* Scan buffer for UBX sync char */
+             if (serial_buff[rd_idx] == (char)LGW_GPS_UBX_SYNC_CHAR) {
+-
+                 /***********************
+                  * Found UBX sync char *
+                  ***********************/
+@@ -3451,8 +3529,10 @@ void thread_gps(void) {
+                     if(latest_msg == INVALID || latest_msg == UNKNOWN) {
+                         /* checksum failed */
+                         frame_size = 0;
+-                    } else if (latest_msg == NMEA_RMC) { /* Get location from RMC frames */
++                    } else if (latest_msg == NMEA_GGA) { /* Get location from GGA frames */
+                         gps_process_coords();
++                    } else if (latest_msg == NMEA_RMC) { /* sync time from RMC frames */
++                        gps_process_sync();
+                     }
+                 }
+             }
+@@ -3683,4 +3763,238 @@ void thread_spectral_scan(void) {
+     printf("\nINFO: End of Spectral Scan thread\n");
+ }
+ 
++/* -------------------------------------------------------------------------- */
++/* ------------ THREAD 7: SOCKET MANAGER ------------------------------------ */
++void thread_socket_manager(void) {
++    int i; /* loop variable and temporary variable for return value */
++    uint32_t sock_up_counter = 0;
++    uint32_t sock_down_counter = 0;
++    uint32_t getaddrinfo_retry_times = 0;
++
++    /* network socket creation */
++    struct addrinfo hints;
++    struct addrinfo *result; /* store result of getaddrinfo */
++    struct addrinfo *q; /* pointer to move into *result data */
++    char host_name[64];
++    char port_name[64];
++
++    /* prepare hints to open network sockets */
++    memset(&hints, 0, sizeof hints);
++    hints.ai_family = AF_INET; /* WA: Forcing IPv4 as AF_UNSPEC makes connection on localhost to fail */
++    hints.ai_socktype = SOCK_DGRAM;
++
++    while (!exit_sig && !quit_sig) {
++        if (!sock_up_ready_sig) {
++            server_connect_state(0);
++            
++            pthread_mutex_lock(&mx_sock_up);
++            // To free a socket descriptor, you need to use close()
++            if (sock_up_counter > 0) {
++                MSG("DEBUG: [socket] Destorying sock_up\n"); 
++                close(sock_up);
++                // kernel need times to detory socket
++                wait_ms(500);
++            }
++            
++            MSG("DEBUG: [socket] Creating sock_up\n"); 
++
++            if (getaddrinfo_retry_times > 0) {
++                MSG("DEBUG: [socket] sock_up getaddrinfo_retry_times = %d\n", getaddrinfo_retry_times); 
++            }
++
++            /* look for server address w/ upstream port */
++            i = getaddrinfo(serv_addr, serv_port_up, &hints, &result);
++            if (i != 0) {
++                MSG("ERROR: [socket] getaddrinfo on address %s (PORT %s) returned %s\n", serv_addr, serv_port_up, gai_strerror(i));
++                if (i == EAI_AGAIN || i == EAI_FAIL) {
++                    // returned Temporary failure in name resolution
++                    // should not exit the program
++                    // retry in 1/2/5/10/30 seconds
++                    getaddrinfo_retry_times ++;
++                    switch (getaddrinfo_retry_times)
++                    {
++                        case 1:
++                            wait_ms(1000);
++                            break;
++                        case 2:
++                            wait_ms(2000);
++                            break;
++                        case 3:
++                            wait_ms(5000);
++                            break;
++                        case 4:
++                            wait_ms(10000);
++                            break;
++                        default:
++                            wait_ms(30000);
++                            break;
++                    }
++                    pthread_mutex_unlock(&mx_sock_up);
++                    continue;
++                }
++                else {
++                    exit_sig = true;
++                    pthread_mutex_unlock(&mx_sock_up);
++                    break;
++                }
++            }
++            getaddrinfo_retry_times = 0;
++
++            /* try to open socket for upstream traffic */
++            for (q=result; q!=NULL; q=q->ai_next) {
++                sock_up = socket(q->ai_family, q->ai_socktype,q->ai_protocol);
++                if (sock_up == -1) continue; /* try next field */
++                else break; /* success, get out of loop */
++            }
++            if (q == NULL) {
++                MSG("ERROR: [socket] failed to open socket to any of server %s addresses (port %s)\n", serv_addr, serv_port_up);
++                i = 1;
++                for (q=result; q!=NULL; q=q->ai_next) {
++                    getnameinfo(q->ai_addr, q->ai_addrlen, host_name, sizeof host_name, port_name, sizeof port_name, NI_NUMERICHOST);
++                    MSG("INFO: [socket] result %i host:%s service:%s\n", i, host_name, port_name);
++                    ++i;
++                }
++                // exit the program
++                exit_sig = true;
++                pthread_mutex_unlock(&mx_sock_up);
++                break;
++            }
++
++            /* connect so we can send/receive packet with the server only */
++            i = connect(sock_up, q->ai_addr, q->ai_addrlen);
++            if (i != 0) {
++                MSG("ERROR: [socket] sock_up connect returned %s\n", strerror(errno));
++                // exit the program
++                exit_sig = true;
++                pthread_mutex_unlock(&mx_sock_up);
++                break;
++            }
++            freeaddrinfo(result);
++            
++            /* set upstream socket RX timeout */
++            i = setsockopt(sock_up, SOL_SOCKET, SO_RCVTIMEO, (void *)&push_timeout_half, sizeof push_timeout_half);
++            if (i != 0) {
++                MSG("ERROR: [socket] sock_up setsockopt returned %s\n", strerror(errno));
++                // exit the program
++                exit_sig = true;
++                pthread_mutex_unlock(&mx_sock_up);
++                break;
++            }
++
++            sock_up_ready_sig = true;
++            sock_up_counter ++;
++            
++            pthread_mutex_unlock(&mx_sock_up);
++            MSG("INFO: [socket] Socket up Ready, sock_up_counter = %d\n", sock_up_counter);
++
++        }
++        else if (!sock_down_ready_sig) {
++            server_connect_state(0);
++
++            pthread_mutex_lock(&mx_sock_down);
++
++            // To free a socket descriptor, you need to use close()
++            if (sock_down_counter > 0) {
++                MSG("DEBUG: [socket] Destorying sock_down\n"); 
++                close(sock_down);
++                // kernel need times to detory socket
++                wait_ms(500);
++            }
++
++            MSG("DEBUG: [socket] Creating sock_down\n"); 
++            
++            /* look for server address w/ downstream port */
++            i = getaddrinfo(serv_addr, serv_port_down, &hints, &result);
++            if (i != 0) {
++                MSG("ERROR: [socket] getaddrinfo on address %s (PORT %s) returned %s\n", serv_addr, serv_port_up, gai_strerror(i));
++                if (i == EAI_AGAIN || i == EAI_FAIL) {
++                    // returned Temporary failure in name resolution
++                    // should not exit the program
++                    // retry in 1/2/5/10/30 seconds
++                    getaddrinfo_retry_times ++;
++                    switch (getaddrinfo_retry_times)
++                    {
++                        case 1:
++                            wait_ms(1000);
++                            break;
++                        case 2:
++                            wait_ms(2000);
++                            break;
++                        case 3:
++                            wait_ms(5000);
++                            break;
++                        case 4:
++                            wait_ms(10000);
++                            break;
++                        default:
++                            wait_ms(30000);
++                            break;
++                    }
++                    pthread_mutex_unlock(&mx_sock_down);
++                    continue;
++                }
++                else {
++                    exit_sig = true;
++                    pthread_mutex_unlock(&mx_sock_down);
++                    break;
++                }
++            }
++            getaddrinfo_retry_times = 0;
++
++            /* try to open socket for downstream traffic */
++            for (q=result; q!=NULL; q=q->ai_next) {
++                sock_down = socket(q->ai_family, q->ai_socktype,q->ai_protocol);
++                if (sock_down == -1) continue; /* try next field */
++                else break; /* success, get out of loop */
++            }
++            if (q == NULL) {
++                MSG("ERROR: [socket] failed to open socket to any of server %s addresses (port %s)\n", serv_addr, serv_port_up);
++                i = 1;
++                for (q=result; q!=NULL; q=q->ai_next) {
++                    getnameinfo(q->ai_addr, q->ai_addrlen, host_name, sizeof host_name, port_name, sizeof port_name, NI_NUMERICHOST);
++                    MSG("INFO: [socket] result %i host:%s service:%s\n", i, host_name, port_name);
++                    ++i;
++                }
++                // exit the program
++                exit_sig = true;
++                pthread_mutex_unlock(&mx_sock_down);
++                break;
++            }
++
++            /* connect so we can send/receive packet with the server only */
++            i = connect(sock_down, q->ai_addr, q->ai_addrlen);
++            if (i != 0) {
++                MSG("ERROR: [socket] sock_down connect returned %s\n", strerror(errno));
++                // exit the program
++                exit_sig = true;
++                pthread_mutex_unlock(&mx_sock_down);
++                break;
++            }
++            freeaddrinfo(result);
++
++            /* set downstream socket RX timeout */
++            i = setsockopt(sock_down, SOL_SOCKET, SO_RCVTIMEO, (void *)&pull_timeout, sizeof pull_timeout);
++            if (i != 0) {
++                MSG("ERROR: [socket] sock_down setsockopt returned %s\n", strerror(errno));
++                // exit the program
++                exit_sig = true;
++                pthread_mutex_unlock(&mx_sock_down);
++                break;
++            }
++
++            sock_down_ready_sig = true;
++            sock_down_counter ++;
++            
++            pthread_mutex_unlock(&mx_sock_down);
++            MSG("INFO: [socket] Socket down Ready, sock_down_counter = %d\n", sock_down_counter);
++
++        }
++        else {
++            /* sleep this thread for 100ms */
++            server_connect_state(1); //connect
++            wait_ms(100);
++        }
++    }
++    MSG("INFO: [socket] End of socket manager thread\n");
++}
+ /* --- EOF ------------------------------------------------------------------ */
+-- 
+2.30.1 (Apple Git-130)
+

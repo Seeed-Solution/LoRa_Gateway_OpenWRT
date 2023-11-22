@@ -4,12 +4,11 @@ PKG_NAME:=station
 PKG_VERSION:=2.0.6
 PKG_RELEASE:=5
 
-PKG_BUILD_DIR:=$(BUILD_DIR)/$(PKG_NAME)-$(PKG_VERSION)
-PKG_REV:=44126f446f2cd041675089ce4e266daddd8508a8
-PKG_SOURCE_PROTO:=git
-PKG_SOURCE_URL=git@gitlab.com:seeedstudio/openwrt/basicstation.git
-PKG_SOURCE_VERSION:=$(PKG_REV)
-PKG_SOURCE:=$(PKG_NAME)-$(PKG_VERSION)-$(PKG_REV).tar.gz
+PKG_BUILD_DIR:=$(BUILD_DIR)/basicstation-$(PKG_VERSION)
+PKG_SOURCE:=basicstation-$(PKG_VERSION).tar.gz
+PKG_SOURCE_URL:=https://github.com/lorabasics/basicstation/archive/refs/tags/v$(PKG_VERSION).tar.gz
+PKG_SOURCE_VERSION:=ba4f85d80a438a5c2b659e568cd2d0f0de08e5a7
+PKG_HASH=7e285de94bae1174b4c3496fc3ab15fe67c72f92c0693d2320bafc654a9dfb43
 
 include $(INCLUDE_DIR)/package.mk
 
