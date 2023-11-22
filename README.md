@@ -37,10 +37,15 @@ subversion libz-dev libc-dev rsync which
 2. Run `./scripts/feeds install -a` to install symlinks for all obtained
    packages into package/feeds/
 
-3. Run `make menuconfig` to select your preferred configuration for the
-   toolchain, target system & firmware packages.
+3. Run `cp diffconfig-sensecap-general .config` to use SenseCAP  diff file, and run `make defconfig` to expand full config.
 
-4. Run `make` to build your firmware. This will download all sources, build the
+4. Run `make menuconfig` to select your SenseCAP Hardware information.
+
+- SenseCAP Hardware->Have 4G ( Whether it contains 4G Hardware)
+- SenseCAP Hardware->Have GPS ( Whether it contains GPS Hardware)
+- SenseCAP Hardware->REGION (select your default REGION)
+
+1. Run `make` to build your firmware. This will download all sources, build the
    cross-compile toolchain and then cross-compile the GNU/Linux kernel & all chosen
    applications for your target system.
 
@@ -85,3 +90,32 @@ For a list of supported devices see the [OpenWrt Hardware Database](https://open
 ## License
 
 OpenWrt is licensed under GPL-2.0
+
+
+## How to Flash
+
+### Step1 Get Firmware
+
+You can compile the project or download the bin file from the release.
+The firmware path:
+```
+<prj>/bin/targets/ramips/mt76x8/openwrt-21.02.0-ramips-mt76x8-sensecap_wm7628n-squashfs-sysupgrade.bin
+```
+### Step2 Setup TFTP Server in your computer
+
+Install the TFTP server tool on your computer and put the firmware into the corresponding directory.
+
+### Step3 Setup SenseCAP Device 
+
+1. Use a Type-c cable to connect the device to the computer, and use a network cable to place the device and the computer in the same LAN.
+2. Connect to the device using the serial port (baud rate 57600)
+3. Restart the device. When the device enters uboot, select command 2 to enter the system update.
+4. Enter device ip, where the device ip network segment must be the network segment of your own network; enter server ip, which is the IP of the computer, and enter the name of the firmware to be burned (the file suffix must be included)
+5. Wait for the firmware update to complete.
+
+ <img src="./docs/png/m2-flash.png" width="1000"/> 
+
+
+
+## How to use
+
