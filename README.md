@@ -119,3 +119,24 @@ Install the TFTP server tool on your computer and put the firmware into the corr
 
 ## How to use
 
+### Console
+
+1. Use a Type-c cable to connect the device to the computer.
+2. Connect to the device using the serial port (baud rate 57600).
+3. Press Enter, enter username 'root', no password.
+
+### SSH 
+
+1. Place the device and computer in the same LAN.
+2. Use SSH tool to connect, port is 22, username is root, no password.
+
+
+### Device AP  & Luci
+
+1. The device will automatically open an AP hotspot, name "SenseCAP_XXXX".
+2. Use your phone or computer to connect to the hotspot, no password.
+3. Enter "192.168.168.1" in the browser to enter the LuCI interface.
+4. Enter username 'root', no password.  
+
+
+ <img src="./docs/png/SenseCAP-LuCI.png" width="1000"/> 
